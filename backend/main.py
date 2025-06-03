@@ -94,6 +94,15 @@ def generate_livekit_token(room, identity, name, can_publish=False, ttl_seconds=
 # In-memory storage
 users = {}
 streams = {}
+analytics = {
+    'view_time': {},       # total seconds watched per stream
+    'watch_sessions': {},  # (user_id, stream_id) -> start_time
+    'visitor_count': 0,
+    'registrations': 0,
+    'logins': {},          # user_id -> [timestamps]
+    'gifts_sent': 0,
+    'revenue': 0.0
+}
 gifts = [
     {"id": "1", "name": "Heart", "emoji": "❤️", "costCoins": 10, "rarity": "COMMON"},
     {"id": "2", "name": "Rose", "emoji": "🌹", "costCoins": 25, "rarity": "UNCOMMON"},
@@ -185,9 +194,11 @@ def login():
     user = users.get(email)
     if not user or user['passwordHash'] != hashlib.sha256(password.encode()).hexdigest():
         return jsonify({'success': False, 'error': {'message': 'Invalid credentials'}}), 401
-    
+
     token = create_token({'email': email}, app.config['SECRET_KEY'])
-    
+
+    analytics['logins'].setdefault(user['id'], []).append(datetime.now())
+
     return jsonify({
         'success': True,
         'data': {
@@ -223,7 +234,10 @@ def register():
         'avatarUrl': f"https://ui-avatars.com/api/?name={displayName}&background=random",
         'createdAt': datetime.now().isoformat()
     }
-    
+
+    analytics['registrations'] += 1
+    analytics['logins'].setdefault(user_id, []).append(datetime.now())
+
     token = create_token({'email': email}, app.config['SECRET_KEY'])
     
     return jsonify({
@@ -245,6 +259,9 @@ def get_current_user(current_user):
 # Streams routes
 @app.route('/api/streams', methods=['GET'])
 def get_streams():
+    if not request.headers.get('Authorization'):
+        analytics['visitor_count'] += 1
+
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 20))
     
@@ -376,6 +393,25 @@ def broadcast_stream(current_user, stream_id):
         }
     })
 
+
+@app.route('/api/streams/<stream_id>/watch', methods=['POST'])
+@token_required
+def watch_stream(current_user, stream_id):
+    action = request.get_json().get('action', 'start')
+    session_key = (current_user['id'], stream_id)
+    if action == 'start':
+        analytics['watch_sessions'][session_key] = datetime.now()
+        return jsonify({'success': True})
+    elif action == 'stop':
+        start = analytics['watch_sessions'].pop(session_key, None)
+        duration = 0
+        if start:
+            duration = (datetime.now() - start).total_seconds()
+            analytics['view_time'][stream_id] = analytics['view_time'].get(stream_id, 0) + duration
+        return jsonify({'success': True, 'duration': duration})
+    else:
+        return jsonify({'success': False, 'error': {'message': 'Invalid action'}}), 400
+
 @app.route('/api/streams/<stream_id>/update', methods=['PUT'])
 @token_required
 def update_stream(current_user, stream_id):
@@ -427,10 +463,12 @@ def send_gift(current_user):
     recipient = next((u for u in users.values() if u['id'] == recipient_id), None)
     if not recipient:
         return jsonify({'success': False, 'error': {'message': 'Recipient not found'}}), 404
-    
+
     current_user['walletBalance'] -= gift['costCoins']
     recipient['walletBalance'] += int(gift['costCoins'] * 0.7)
-    
+    analytics['gifts_sent'] += 1
+    analytics['revenue'] += gift['costCoins']
+
     return jsonify({
         'success': True,
         'data': {
@@ -469,6 +507,7 @@ def purchase_coins(current_user):
     
     coins = packages[package]['coins']
     current_user['walletBalance'] += coins
+    analytics['revenue'] += packages[package]['price']
     
     return jsonify({
         'success': True,
@@ -502,9 +541,28 @@ def health_check():
         'streams': len([s for s in streams.values() if s['isLive']])
     })
 
+
+@app.route('/api/analytics', methods=['GET'])
+def get_analytics():
+    total_users = analytics['registrations'] + len(demo_users)
+    returning = len([u for u, logs in analytics['logins'].items() if len(logs) > 1])
+    retention = returning / total_users if total_users else 0
+    conversion = analytics['registrations'] / analytics['visitor_count'] if analytics['visitor_count'] else 0
+    return jsonify({
+        'success': True,
+        'data': {
+            'view_time': analytics['view_time'],
+            'retention_rate': retention,
+            'conversion_rate': conversion,
+            'gifts_sent': analytics['gifts_sent'],
+            'revenue': analytics['revenue']
+        }
+    })
+
 # Root endpoint
 @app.route('/')
 def index():
+    analytics['visitor_count'] += 1
     return jsonify({
         'message': 'LiveHot.app Backend API',
         'version': '1.0.0',
