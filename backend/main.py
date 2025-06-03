@@ -1,16 +1,18 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, abort, url_for, make_response
 from flask_cors import CORS
 from backend.routes.user import user_bp
 import os
 from dotenv import load_dotenv
 import json
 import uuid
+from io import BytesIO
 from datetime import datetime, timedelta
 import hashlib
 import base64
 import hmac
 from functools import wraps
 import jwt
+from PIL import Image
 
 load_dotenv()
 
@@ -587,7 +589,34 @@ def purchase_coins(current_user):
         }
     })
 
+# Image upload with automatic compression for mobile optimization
+@app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': {'message': 'Image missing'}}), 400
 
+    file = request.files['image']
+    try:
+        img = Image.open(file.stream)
+    except Exception:
+        return jsonify({'success': False, 'error': {'message': 'Invalid image'}}), 400
+
+    # Compress image for mobile optimization
+    img_io = BytesIO()
+    img.convert('RGB').save(img_io, 'JPEG', quality=70, optimize=True)
+    img_io.seek(0)
+
+    # Save to uploads directory
+    uploads_dir = os.path.join('backend', 'static', 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+    filename = f"{uuid.uuid4()}.jpg"
+    filepath = os.path.join(uploads_dir, filename)
+    with open(filepath, 'wb') as f:
+        f.write(img_io.read())
+
+    return jsonify({'success': True, 'data': {'url': f'/static/uploads/{filename}'}})
+
+# User preferences routes
 @app.route('/api/users/preferences', methods=['PUT'])
 @token_required
 def update_preferences(current_user):
@@ -621,7 +650,7 @@ def health_check():
         'streams': len([s for s in streams.values() if s['isLive']])
     })
 
-
+# Analytics endpoint
 @app.route('/api/analytics', methods=['GET'])
 def get_analytics():
     total_users = analytics['registrations'] + len(demo_users)
@@ -639,6 +668,37 @@ def get_analytics():
         }
     })
 
+# SEO and sharing routes
+@app.route('/streams/<stream_id>')
+def share_stream(stream_id):
+    """Public sharing page for streams with SEO meta tags"""
+    stream = streams.get(stream_id)
+    if not stream:
+        abort(404)
+
+    url = request.url
+    return render_template('share.html', stream=stream, url=url)
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """Generate sitemap for SEO optimization"""
+    pages = [url_for('index', _external=True)]
+    
+    # Add all public stream pages to sitemap
+    for stream in streams.values():
+        if not stream.get('isPrivate', False):  # Only include public streams
+            pages.append(url_for('share_stream', stream_id=stream['id'], _external=True))
+
+    xml_items = '\n'.join(f'<url><loc>{p}</loc></url>' for p in pages)
+    xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{xml_items}
+</urlset>'''
+
+    response = make_response(xml)
+    response.headers['Content-Type'] = 'application/xml'
+    return response
+
 # Root endpoint
 @app.route('/')
 def index():
@@ -652,7 +712,9 @@ def index():
             'gifts': '/api/gifts',
             'wallet': '/api/wallet',
             'users': '/api/users/*',
-            'health': '/api/health'
+            'health': '/api/health',
+            'analytics': '/api/analytics',
+            'sitemap': '/sitemap.xml'
         },
         'demo_credentials': {
             'streamer': {'email': 'demo@livehot.app', 'password': 'password123'},
