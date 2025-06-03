@@ -407,6 +407,28 @@ async function startStreamBroadcast() {
 document.addEventListener('DOMContentLoaded', async function() {
     // Initialize app
     await checkAuth();
+
+    // Register service worker and background sync
+    if ('serviceWorker' in navigator) {
+        try {
+            const reg = await navigator.serviceWorker.register('service-worker.js');
+            if ('SyncManager' in window) {
+                await reg.sync.register('sync-data');
+            }
+        } catch (err) {
+            console.error('Service worker registration failed', err);
+        }
+    }
+
+    // Request notification permission
+    if (window.Notification && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+
+    // Subscribe to push notifications
+    if (Notification.permission === 'granted') {
+        subscribePush();
+    }
     
     // Show navigation and hide loading
     hideElement('loading');
@@ -506,4 +528,16 @@ window.showPage = showPage;
 window.fillDemoCredentials = fillDemoCredentials;
 window.toggleAuth = toggleAuth;
 window.purchaseCoins = purchaseCoins;
+
+async function subscribePush() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.pushManager.subscribe({
+            userVisibleOnly: true
+        });
+    } catch (err) {
+        console.error('Push subscription failed', err);
+    }
+}
 
