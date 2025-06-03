@@ -9,6 +9,8 @@ let loginTimeout;
 let cameraEnabled = false;
 let micEnabled = false;
 let livekitRoom = null;
+let previewStream = null;
+let micStream = null;
 
 // API Service
 const api = {
@@ -332,20 +334,21 @@ async function purchaseCoins(packageType) {
 function toggleCamera() {
     cameraEnabled = !cameraEnabled;
     const btn = document.getElementById('camera-btn');
-    
+    const videoEl = document.getElementById('broadcast-video');
+
     if (cameraEnabled) {
         btn.textContent = '📹 Câmera Ligada';
         btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-green-600 hover:bg-green-700 text-white';
-        
-        // Try to access camera
+
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: true })
                 .then(stream => {
-                    console.log('Camera access granted:', stream);
+                    previewStream = stream;
+                    videoEl.srcObject = stream;
+                    showElement('broadcast-session');
                     showNotification('Câmera ativada com sucesso!', 'success');
                 })
                 .catch(err => {
-                    console.log('Camera access denied:', err);
                     showNotification('Acesso à câmera negado ou não disponível', 'error');
                     cameraEnabled = false;
                     btn.textContent = '📹 Câmera Desligada';
@@ -353,6 +356,11 @@ function toggleCamera() {
                 });
         }
     } else {
+        if (previewStream) {
+            previewStream.getTracks().forEach(t => t.stop());
+            previewStream = null;
+            videoEl.srcObject = null;
+        }
         btn.textContent = '📹 Câmera Desligada';
         btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white';
     }
@@ -361,11 +369,27 @@ function toggleCamera() {
 function toggleMic() {
     micEnabled = !micEnabled;
     const btn = document.getElementById('mic-btn');
-    
+
     if (micEnabled) {
         btn.textContent = '🎤 Microfone Ligado';
         btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-green-600 hover:bg-green-700 text-white';
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    micStream = stream;
+                })
+                .catch(() => {
+                    showNotification('Acesso ao microfone negado ou não disponível', 'error');
+                    micEnabled = false;
+                    btn.textContent = '🎤 Microfone Desligado';
+                    btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white';
+                });
+        }
     } else {
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+        }
         btn.textContent = '🎤 Microfone Desligado';
         btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white';
     }
@@ -383,7 +407,11 @@ async function startStreamBroadcast() {
 
         if (window.livekitClient) {
             const { connect, createLocalTracks } = window.livekitClient;
-            livekitRoom = await connect(url, token);
+            if (previewStream) {
+                previewStream.getTracks().forEach(t => t.stop());
+                previewStream = null;
+            }
+            livekitRoom = await connect(url, token, { adaptiveStream: true });
             const tracks = await createLocalTracks({
                 audio: micEnabled,
                 video: cameraEnabled,
