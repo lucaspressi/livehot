@@ -12,6 +12,12 @@ livehot-package/
 │   └── main.py                # API principal com todas as funcionalidades
 ├── index.html                 # Frontend HTML/CSS/JS
 ├── app.js                     # JavaScript da aplicação
+├── src/
+│   └── styles/                # Sistema de estilos
+│       ├── globals.css        # Reset global
+│       ├── components.css     # Classes reutilizáveis
+│       ├── themes.css         # Temas dark/light
+│       └── animations.css     # Animações customizadas
 ├── requirements.txt           # Dependências Python
 ├── relatorio_correcao_final.md # Relatório completo da correção
 ├── diagnostico_problemas.md   # Diagnóstico dos problemas originais
