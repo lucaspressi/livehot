@@ -662,7 +662,7 @@ async function loadMoreStreams() {
             const slide = document.createElement('div');
             slide.className = 'slide';
             slide.innerHTML = `
-                <img src="${stream.thumbnailUrl}" alt="${stream.title}">
+                <img src="${stream.thumbnailUrl}" alt="${stream.title}" loading="lazy">
                 <div class="actions">
                     <button onclick="likeStream('${stream.id}')" aria-label="Curtir stream ${stream.title}">❤️</button>
                     <button onclick="shareStream('${stream.id}')" aria-label="Compartilhar stream ${stream.title}">🔗</button>
@@ -676,6 +676,15 @@ async function loadMoreStreams() {
         console.error('Error loading streams:', error);
     }
     feedLoading = false;
+}
+
+async function refreshFeed() {
+    const container = document.getElementById('feed');
+    if (!container) return;
+    feedPage = 1;
+    feedLoading = false;
+    container.innerHTML = '';
+    await loadMoreStreams();
 }
 
 // Legacy compatibility function
@@ -897,9 +906,27 @@ document.addEventListener('DOMContentLoaded', async function() {
     const feed = document.getElementById("feed");
     if (feed) {
         let touchStartY = 0;
+        let pullStartY = null;
+
         feed.addEventListener("touchstart", e => {
             touchStartY = e.touches[0].clientY;
-        });
+            if (feed.scrollTop === 0) {
+                pullStartY = touchStartY;
+            } else {
+                pullStartY = null;
+            }
+        }, { passive: true });
+
+        feed.addEventListener("touchmove", e => {
+            if (pullStartY !== null) {
+                const diffPull = e.touches[0].clientY - pullStartY;
+                if (diffPull > 80) {
+                    pullStartY = null;
+                    refreshFeed();
+                }
+            }
+        }, { passive: true });
+
         feed.addEventListener("touchend", e => {
             const diff = e.changedTouches[0].clientY - touchStartY;
             if (diff > 50) {
@@ -907,14 +934,14 @@ document.addEventListener('DOMContentLoaded', async function() {
             } else if (diff < -50) {
                 feed.scrollBy({top: window.innerHeight, behavior: "smooth"});
             }
-        });
+        }, { passive: true });
 
         // Infinite scroll
         feed.addEventListener('scroll', () => {
             if (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50) {
                 loadMoreStreams();
             }
-        });
+        }, { passive: true });
     }
 
     // Keyboard navigation for feed (accessibility)

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta property="og:title" content="LiveHot - Plataforma Premium de Live Streaming">
     <meta property="og:description" content="Assista e compartilhe lives incríveis na LiveHot">
     <meta property="og:type" content="website">
@@ -33,6 +33,10 @@
         /* Mobile optimizations */
         @media (max-width: 768px) {
             .text-2xl { font-size: 1.5rem; }
+        }
+
+        @media (max-width: 480px) {
+            .text-2xl { font-size: 1.25rem; }
         }
         
         /* Safe area for mobile devices */
@@ -379,10 +383,11 @@
     </div>
 
 
-    <script src="config.js"></script>
+    <script src="config.js" defer></script>
     <script>
         const script = document.createElement('script');
         script.src = (window.CDN_BASE_URL || '') + 'app.js';
+        script.defer = true;
         document.body.appendChild(script);
     </script>
 </body>
