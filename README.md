@@ -74,6 +74,16 @@ npx serve .
 
 2. **Acessar:** `http://localhost:8000`
 
+### 🚢 **Usando Docker**
+
+1. **Construir e iniciar os serviços:**
+```bash
+docker-compose up --build
+```
+
+2. **Frontend disponível em:** `http://localhost:8000`
+3. **Backend disponível em:** `http://localhost:5000`
+
 ## ✅ **Funcionalidades Implementadas**
 
 ### 🎯 **Backend**
