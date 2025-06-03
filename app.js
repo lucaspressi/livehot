@@ -4,6 +4,8 @@ const API_BASE_URL = window.API_BASE_URL || '/api';
 // Global state
 let currentUser = null;
 let currentStream = null;
+let loginTimeout;
+
 let cameraEnabled = false;
 let micEnabled = false;
 let livekitRoom = null;
@@ -202,6 +204,8 @@ function logout() {
     updateAuthUI();
     showPage('home');
     showNotification('Logout realizado com sucesso!', 'success');
+    startLoginTimer();
+
 }
 
 function fillDemoCredentials(type) {
@@ -215,70 +219,51 @@ function fillDemoCredentials(type) {
         emailInput.value = 'viewer@livehot.app';
         passwordInput.value = 'password123';
     }
+
+function startLoginTimer(minutes = 10) {
+    if (currentUser) return;
+    clearTimeout(loginTimeout);
+    loginTimeout = setTimeout(showLoginModal, minutes * 60 * 1000);
+}
+
+function showLoginModal() {
+    showElement("login-modal");
+}
+
+function cancelLoginTimer() {
+    clearTimeout(loginTimeout);
+    hideElement("login-modal");
+}
+
 }
 
 // Stream functions
 async function loadStreams() {
-    const container = document.getElementById('streams-container');
-    
+    const container = document.getElementById('feed');
     try {
-        container.innerHTML = `
-            <div class="text-center text-slate-400 py-12">
-                <div class="animate-pulse text-4xl mb-4">📹</div>
-                <p>Carregando streams...</p>
-            </div>
-        `;
-        
+        container.innerHTML = `<div class="text-center text-slate-400 py-12">Carregando streams...</div>`;
         const response = await api.getStreams();
         const streams = response.data.streams;
-        
         if (streams.length === 0) {
-            container.innerHTML = `
-                <div class="text-center text-slate-400 py-12">
-                    <div class="text-4xl mb-4">📹</div>
-                    <p>Nenhuma stream ativa no momento</p>
-                </div>
-            `;
+            container.innerHTML = `<div class="text-center text-slate-400 py-12">Nenhuma stream ativa no momento</div>`;
             return;
         }
-        
-        container.innerHTML = `
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                ${streams.map(stream => `
-                    <div class="bg-slate-800 rounded-lg overflow-hidden shadow-lg">
-                        <div class="relative">
-                            <img 
-                                src="${stream.thumbnailUrl}" 
-                                alt="${stream.title}"
-                                class="w-full h-48 object-cover"
-                                onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjMzc0MTUxIi8+Cjx0ZXh0IHg9IjIwMCIgeT0iMTUwIiBmaWxsPSIjOTQ5NmE4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSIgZm9udC1mYW1pbHk9InN5c3RlbS11aSIgZm9udC1zaXplPSIxOCI+TGl2ZSBTdHJlYW08L3RleHQ+Cjwvc3ZnPg=='"
-                            />
-                            <div class="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
-                                LIVE
-                            </div>
-                            <div class="absolute bottom-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
-                                👥 ${stream.viewerCount}
-                            </div>
-                        </div>
-                        <div class="p-4">
-                            <h3 class="text-white font-semibold mb-2 line-clamp-2">${stream.title}</h3>
-                            <div class="flex items-center gap-2 mb-2">
-                                <img 
-                                    src="${stream.streamer.avatarUrl}" 
-                                    alt="${stream.streamer.displayName}"
-                                    class="w-6 h-6 rounded-full"
-                                    onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTIiIGZpbGw9IiM2MzY2ZjEiLz4KPHN2ZyB4PSI2IiB5PSI2IiB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0yMCAyMXYtMmE0IDQgMCAwIDAtNC00SDhhNCA0IDAgMCAwLTQgNHYyIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8Y2lyY2xlIGN4PSIxMiIgY3k9IjciIHI9IjQiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo8L3N2Zz4K'"
-                                />
-                                <span class="text-slate-300 text-sm">${stream.streamer.displayName}</span>
-                                ${stream.streamer.isVerified ? '<span class="text-blue-400 text-xs">✓</span>' : ''}
-                            </div>
-                            <span class="text-slate-400 text-xs">${stream.category}</span>
-                        </div>
-                    </div>
-                `).join('')}
+        container.innerHTML = streams.map(stream => `
+            <div class="slide">
+                <img src="${stream.thumbnailUrl}" alt="${stream.title}" class="w-full h-full object-cover" onerror="this.src='${stream.thumbnailUrl}'" />
+                <div class="absolute bottom-0 left-0 p-4 text-white bg-black/50 w-full">
+                    <div class="font-bold">${stream.streamer.displayName}</div>
+                    <div class="text-sm">${stream.title}</div>
+                </div>
+                <div class="actions">
+                    <button>❤️</button>
+                    <button>🎁</button>
+                    <button>🔗</button>
+                    <button>➕</button>
+                </div>
+                <div class="chat"></div>
             </div>
-        `;
-        
+        `).join('');
     } catch (error) {
         container.innerHTML = `
             <div class="text-center text-red-400 py-12">
@@ -407,6 +392,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Show home page by default
     showPage('home');
     
+    startLoginTimer();
+    document.getElementById("login-modal-login").addEventListener("click", () => { cancelLoginTimer(); showPage("login"); });
+    document.getElementById("login-modal-continue").addEventListener("click", () => { cancelLoginTimer(); startLoginTimer(5); });
+    const feed = document.getElementById("feed");
+    let touchStartY = 0;
+    feed.addEventListener("touchstart", e => { touchStartY = e.touches[0].clientY; });
+    feed.addEventListener("touchend", e => { const diff = e.changedTouches[0].clientY - touchStartY; if (diff > 50) { feed.scrollBy({top: -window.innerHeight, behavior: "smooth"}); } else if (diff < -50) { feed.scrollBy({top: window.innerHeight, behavior: "smooth"}); } });
+
     // Login form
     document.getElementById('login-form').addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -420,6 +413,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             localStorage.setItem('token', response.data.token);
             currentUser = response.data.user;
             updateAuthUI();
+            cancelLoginTimer();
+
             showPage('home');
             showNotification('Login realizado com sucesso!', 'success');
             
