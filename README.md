@@ -45,21 +45,19 @@ livehot-package/
 pip install -r requirements.txt
 ```
 
-2. **Executar servidor:**
+2. **Configurar variáveis de ambiente:**
+```bash
+cp .env.example .env
+# Edite o arquivo .env com suas chaves
+```
+3. **Executar servidor:**
 ```bash
 cd backend
 python main.py
 ```
+As variáveis definidas no arquivo `.env` serão carregadas automaticamente. Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` conforme necessário.
 
-Opcionalmente, defina variáveis de ambiente para integrar com o LiveKit:
-
-```bash
-export LIVEKIT_URL=wss://seu-servidor-livekit
-export LIVEKIT_API_KEY=sua-chave
-export LIVEKIT_API_SECRET=seu-segredo
-```
-
-3. **API estará disponível em:** `http://localhost:5000`
+4. **API estará disponível em:** `http://localhost:5000`
 
 ### **Frontend (HTML/CSS/JS)**
 
