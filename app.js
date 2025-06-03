@@ -10,6 +10,33 @@ let cameraEnabled = false;
 let micEnabled = false;
 let livekitRoom = null;
 
+const defaultTheme = { mode: 'dark', accentColor: '#ec4899', special: '' };
+
+function applyTheme(theme = defaultTheme) {
+    document.body.classList.remove('light-theme', 'halloween-theme', 'christmas-theme');
+    if (theme.mode === 'light') {
+        document.body.classList.add('light-theme');
+    }
+    if (theme.special === 'halloween') {
+        document.body.classList.add('halloween-theme');
+    } else if (theme.special === 'christmas') {
+        document.body.classList.add('christmas-theme');
+    }
+    document.documentElement.style.setProperty('--accent-color', theme.accentColor || defaultTheme.accentColor);
+}
+
+function loadStoredTheme() {
+    const stored = localStorage.getItem('theme');
+    if (stored) {
+        try { return JSON.parse(stored); } catch {}
+    }
+    return defaultTheme;
+}
+
+function storeTheme(theme) {
+    localStorage.setItem('theme', JSON.stringify(theme));
+}
+
 // API Service
 const api = {
     async request(endpoint, options = {}) {
@@ -86,6 +113,13 @@ const api = {
             body: JSON.stringify({ package: packageType }),
         });
     },
+
+    async updateUser(userId, data) {
+        return this.request(`/users/${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+    },
 };
 
 // Utility functions
@@ -125,6 +159,9 @@ function showPage(pageId) {
         case 'wallet':
             loadWallet();
             break;
+        case 'profile':
+            loadProfile();
+            break;
         case 'broadcast':
             if (!currentUser?.isStreamer) {
                 showPage('home');
@@ -163,6 +200,9 @@ async function checkAuth() {
         try {
             const response = await api.getCurrentUser();
             currentUser = response.data;
+            const theme = { mode: currentUser.theme, accentColor: currentUser.accentColor, special: currentUser.specialTheme };
+            applyTheme(theme);
+            storeTheme(theme);
             updateAuthUI();
             return true;
         } catch (error) {
@@ -304,6 +344,43 @@ async function purchaseCoins(packageType) {
     }
 }
 
+// Profile functions
+function loadProfile() {
+    if (!currentUser) {
+        showNotification('Faça login para editar o perfil', 'error');
+        showPage('login');
+        return;
+    }
+    document.getElementById('avatar-url').value = currentUser.avatarUrl || '';
+    document.getElementById('display-name').value = currentUser.displayName || '';
+    document.getElementById('profile-avatar').src = currentUser.avatarUrl || '';
+    document.getElementById('profile-theme-toggle').checked = currentUser.theme === 'light';
+    document.getElementById('accent-color').value = currentUser.accentColor || defaultTheme.accentColor;
+    document.getElementById('season-theme').value = currentUser.specialTheme || '';
+}
+
+async function saveProfile() {
+    const data = {
+        avatarUrl: document.getElementById('avatar-url').value,
+        displayName: document.getElementById('display-name').value,
+        theme: document.getElementById('profile-theme-toggle').checked ? 'light' : 'dark',
+        accentColor: document.getElementById('accent-color').value,
+        specialTheme: document.getElementById('season-theme').value,
+    };
+
+    try {
+        const response = await api.updateUser(currentUser.id, data);
+        currentUser = response.data;
+        const theme = { mode: currentUser.theme, accentColor: currentUser.accentColor, special: currentUser.specialTheme };
+        applyTheme(theme);
+        storeTheme(theme);
+        loadProfile();
+        showNotification('Perfil atualizado!', 'success');
+    } catch (error) {
+        showNotification('Erro ao atualizar perfil: ' + error.message, 'error');
+    }
+}
+
 // Broadcast functions
 function toggleCamera() {
     cameraEnabled = !cameraEnabled;
@@ -382,6 +459,7 @@ async function startStreamBroadcast() {
 // Event listeners
 document.addEventListener('DOMContentLoaded', async function() {
     // Initialize app
+    applyTheme(loadStoredTheme());
     await checkAuth();
     
     // Show navigation and hide loading
@@ -412,6 +490,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             const response = await api.login(email, password);
             localStorage.setItem('token', response.data.token);
             currentUser = response.data.user;
+            const theme = { mode: currentUser.theme, accentColor: currentUser.accentColor, special: currentUser.specialTheme };
+            applyTheme(theme);
+            storeTheme(theme);
             updateAuthUI();
             cancelLoginTimer();
 
@@ -475,6 +556,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('camera-btn').addEventListener('click', toggleCamera);
     document.getElementById('mic-btn').addEventListener('click', toggleMic);
     document.getElementById('start-stream-btn').addEventListener('click', startStreamBroadcast);
+
+    document.getElementById('save-profile').addEventListener('click', saveProfile);
+    document.getElementById('avatar-url').addEventListener('input', e => {
+        document.getElementById('profile-avatar').src = e.target.value;
+    });
 });
 
 // Make functions global for onclick handlers
@@ -482,4 +568,5 @@ window.showPage = showPage;
 window.fillDemoCredentials = fillDemoCredentials;
 window.toggleAuth = toggleAuth;
 window.purchaseCoins = purchaseCoins;
+window.saveProfile = saveProfile;
 

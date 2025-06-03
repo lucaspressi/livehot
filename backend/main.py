@@ -113,6 +113,9 @@ demo_users = {
         "isVerified": True,
         "walletBalance": 1000,
         "avatarUrl": "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
+        "theme": "dark",
+        "accentColor": "#ec4899",
+        "specialTheme": "",
         "createdAt": datetime.now().isoformat()
     },
     "viewer@livehot.app": {
@@ -125,6 +128,9 @@ demo_users = {
         "isVerified": False,
         "walletBalance": 500,
         "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+        "theme": "dark",
+        "accentColor": "#ec4899",
+        "specialTheme": "",
         "createdAt": datetime.now().isoformat()
     }
 }
@@ -221,6 +227,9 @@ def register():
         'isVerified': False,
         'walletBalance': 100,
         'avatarUrl': f"https://ui-avatars.com/api/?name={displayName}&background=random",
+        'theme': 'dark',
+        'accentColor': '#ec4899',
+        'specialTheme': '',
         'createdAt': datetime.now().isoformat()
     }
     
@@ -489,6 +498,22 @@ def get_user(user_id):
     return jsonify({
         'success': True,
         'data': {k: v for k, v in user.items() if k != 'passwordHash'}
+    })
+
+@app.route('/api/users/<user_id>', methods=['PUT'])
+@token_required
+def update_user_route(current_user, user_id):
+    if current_user['id'] != user_id:
+        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
+
+    data = request.get_json()
+    for field in ['displayName', 'avatarUrl', 'theme', 'accentColor', 'specialTheme']:
+        if field in data:
+            current_user[field] = data[field]
+
+    return jsonify({
+        'success': True,
+        'data': {k: v for k, v in current_user.items() if k != 'passwordHash'}
     })
 
 # Health check
