@@ -10,6 +10,11 @@ let cameraEnabled = false;
 let micEnabled = false;
 let livekitRoom = null;
 
+// Feed pagination state
+let feedPage = 1;
+let feedLoading = false;
+const feedLimit = 5;
+
 // Theme system
 const defaultTheme = { mode: 'dark', accentColor: '#ec4899', special: '' };
 
@@ -290,7 +295,7 @@ function showPage(pageId) {
     // Load page content
     switch(pageId) {
         case 'home':
-            loadStreams();
+            loadMoreStreams();
             break;
         case 'wallet':
             loadWallet();
@@ -591,77 +596,41 @@ async function startStreamBroadcast() {
     }
 }
 
-// Stream functions
-async function loadStreams() {
-    const container = document.getElementById('streams-container');
+// Stream feed functions
+async function loadMoreStreams() {
+    if (feedLoading) return;
+    const container = document.getElementById('feed');
     if (!container) return;
-    
-    container.innerHTML = '<div class="text-center py-8" role="status" aria-live="polite">Carregando streams...</div>';
-    
+
+    feedLoading = true;
     try {
-        const response = await api.getStreams();
+        const response = await api.getStreams(feedPage, feedLimit);
         const streams = response.data.streams || [];
-        
-        if (streams.length === 0) {
-            container.innerHTML = `
-                <div class="text-center py-12">
-                    <div class="text-4xl mb-4" role="img" aria-label="Televisão">📺</div>
-                    <p class="text-slate-400">Nenhuma stream ao vivo no momento</p>
-                </div>
-            `;
+
+        if (streams.length === 0 && feedPage === 1) {
+            container.innerHTML = '<div class="text-center text-slate-400 py-12">Nenhuma stream ao vivo</div>';
+            feedLoading = false;
             return;
         }
-        
-        container.innerHTML = streams.map(stream => `
-            <div class="stream-card bg-slate-800 rounded-lg overflow-hidden cursor-pointer hover:bg-slate-700 transition-colors focus:ring-2 focus:ring-pink-500" 
-                 onclick="openStream('${stream.id}')" 
-                 onkeydown="if(event.key==='Enter'||event.key===' ') openStream('${stream.id}')" 
-                 tabindex="0"
-                 role="button"
-                 aria-label="Abrir stream: ${stream.title} por ${stream.streamer.displayName}">
-                <div class="relative">
-                    <img src="${stream.thumbnailUrl}" 
-                         alt="Thumbnail da stream: ${stream.title}" 
-                         class="w-full h-48 object-cover" 
-                         loading="lazy" />
-                    <div class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded text-xs"
-                         role="status" aria-label="Ao vivo">
-                        🔴 AO VIVO
-                    </div>
-                    <div class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs"
-                         aria-label="${stream.viewerCount} espectadores">
-                        ${stream.viewerCount} viewers
-                    </div>
-                </div>
-                <div class="p-4">
-                    <div class="flex items-center mb-2">
-                        <img src="${stream.streamer.avatarUrl}" 
-                             alt="Avatar de ${stream.streamer.displayName}" 
-                             class="w-8 h-8 rounded-full mr-2" />
-                        <span class="font-semibold text-white">${stream.streamer.displayName}</span>
-                        ${stream.streamer.isVerified ? '<span class="ml-1 text-blue-400" aria-label="Verificado">✓</span>' : ''}
-                    </div>
-                    <h3 class="text-white font-medium mb-1 line-clamp-2">${stream.title}</h3>
-                    <p class="text-slate-400 text-sm">${stream.category}</p>
-                </div>
-            </div>
-        `).join('');
-        
+
+        streams.forEach(stream => {
+            const slide = document.createElement('div');
+            slide.className = 'slide';
+            slide.innerHTML = `
+                <img src="${stream.thumbnailUrl}" alt="${stream.title}">
+                <div class="actions">
+                    <button aria-label="Curtir">❤️</button>
+                    <button aria-label="Compartilhar">🔗</button>
+                </div>`;
+            container.appendChild(slide);
+        });
+
+        feedPage += 1;
         announceToScreenReader(`${streams.length} streams carregadas`);
-        
     } catch (error) {
         console.error('Error loading streams:', error);
-        container.innerHTML = `
-            <div class="text-center text-red-400 py-12" role="alert">
-                <div class="text-4xl mb-4" role="img" aria-label="Erro">❌</div>
-                <p>Erro ao carregar streams: ${error.message}</p>
-                <button onclick="loadStreams()" 
-                        class="mt-4 bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded focus:ring-2 focus:ring-pink-500">
-                    Tentar Novamente
-                </button>
-            </div>
-        `;
     }
+    feedLoading = false;
 }
 
 function openStream(streamId) {
@@ -798,16 +767,23 @@ document.addEventListener('DOMContentLoaded', async function() {
     const feed = document.getElementById("feed");
     if (feed) {
         let touchStartY = 0;
-        feed.addEventListener("touchstart", e => { 
-            touchStartY = e.touches[0].clientY; 
+        feed.addEventListener("touchstart", e => {
+            touchStartY = e.touches[0].clientY;
         });
-        feed.addEventListener("touchend", e => { 
-            const diff = e.changedTouches[0].clientY - touchStartY; 
-            if (diff > 50) { 
-                feed.scrollBy({top: -window.innerHeight, behavior: "smooth"}); 
-            } else if (diff < -50) { 
-                feed.scrollBy({top: window.innerHeight, behavior: "smooth"}); 
-            } 
+        feed.addEventListener("touchend", e => {
+            const diff = e.changedTouches[0].clientY - touchStartY;
+            if (diff > 50) {
+                feed.scrollBy({top: -window.innerHeight, behavior: "smooth"});
+            } else if (diff < -50) {
+                feed.scrollBy({top: window.innerHeight, behavior: "smooth"});
+            }
+        });
+
+        // Infinite scroll
+        feed.addEventListener('scroll', () => {
+            if (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50) {
+                loadMoreStreams();
+            }
         });
     }
 
@@ -1125,7 +1101,7 @@ function showPage(pageId) {
     // Load page content
     switch(pageId) {
         case 'home':
-            loadStreams();
+            loadMoreStreams();
             break;
         case 'wallet':
             loadWallet();
@@ -1412,61 +1388,12 @@ async function startStreamBroadcast() {
     }
 }
 
-// Stream functions
+// Stream feed functions (duplicate for legacy code)
 async function loadStreams() {
-    const container = document.getElementById('streams-container');
-    if (!container) return;
-    
-    container.innerHTML = '<div class="text-center py-8">Carregando streams...</div>';
-    
-    try {
-        const response = await api.getStreams();
-        const streams = response.data.streams || [];
-        
-        if (streams.length === 0) {
-            container.innerHTML = `
-                <div class="text-center py-12">
-                    <div class="text-4xl mb-4">📺</div>
-                    <p class="text-slate-400">Nenhuma stream ao vivo no momento</p>
-                </div>
-            `;
-            return;
-        }
-        
-        container.innerHTML = streams.map(stream => `
-            <div class="stream-card bg-slate-800 rounded-lg overflow-hidden cursor-pointer hover:bg-slate-700 transition-colors" onclick="openStream('${stream.id}')">
-                <div class="relative">
-                    <img src="${stream.thumbnailUrl}" alt="${stream.title}" class="w-full h-48 object-cover" loading="lazy" />
-                    <div class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded text-xs">
-                        🔴 AO VIVO
-                    </div>
-                    <div class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
-                        ${stream.viewerCount} viewers
-                    </div>
-                </div>
-                <div class="p-4">
-                    <div class="flex items-center mb-2">
-                        <img src="${stream.streamer.avatarUrl}" alt="${stream.streamer.displayName}" class="w-8 h-8 rounded-full mr-2" />
-                        <span class="font-semibold text-white">${stream.streamer.displayName}</span>
-                        ${stream.streamer.isVerified ? '<span class="ml-1 text-blue-400">✓</span>' : ''}
-                    </div>
-                    <h3 class="text-white font-medium mb-1 line-clamp-2">${stream.title}</h3>
-                    <p class="text-slate-400 text-sm">${stream.category}</p>
-                </div>
-            </div>
-        `).join('');
-        
-    } catch (error) {
-        console.error('Error loading streams:', error);
-        container.innerHTML = `
-            <div class="text-center text-red-400 py-12">
-                <div class="text-4xl mb-4">❌</div>
-                <p>Erro ao carregar streams: ${error.message}</p>
-                <button onclick="loadStreams()" class="mt-4 bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded">
-                    Tentar Novamente
-                </button>
-            </div>
-        `;
+    // Kept for backward compatibility, delegates to loadMoreStreams
+    const feed = document.getElementById('feed');
+    if (feed && feed.childElementCount === 0) {
+        await loadMoreStreams();
     }
 }
 
@@ -1590,16 +1517,22 @@ document.addEventListener('DOMContentLoaded', async function() {
     const feed = document.getElementById("feed");
     if (feed) {
         let touchStartY = 0;
-        feed.addEventListener("touchstart", e => { 
-            touchStartY = e.touches[0].clientY; 
+        feed.addEventListener("touchstart", e => {
+            touchStartY = e.touches[0].clientY;
         });
-        feed.addEventListener("touchend", e => { 
-            const diff = e.changedTouches[0].clientY - touchStartY; 
-            if (diff > 50) { 
-                feed.scrollBy({top: -window.innerHeight, behavior: "smooth"}); 
-            } else if (diff < -50) { 
-                feed.scrollBy({top: window.innerHeight, behavior: "smooth"}); 
-            } 
+        feed.addEventListener("touchend", e => {
+            const diff = e.changedTouches[0].clientY - touchStartY;
+            if (diff > 50) {
+                feed.scrollBy({top: -window.innerHeight, behavior: "smooth"});
+            } else if (diff < -50) {
+                feed.scrollBy({top: window.innerHeight, behavior: "smooth"});
+            }
+        });
+
+        feed.addEventListener('scroll', () => {
+            if (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50) {
+                loadMoreStreams();
+            }
         });
     }
 
