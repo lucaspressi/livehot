@@ -18,6 +18,13 @@ livehot-package/
 └── README.md                  # Este arquivo
 ```
 
+### 1.2 Arquivos de Configuração
+
+- **package.json** - Configurar scripts e dependências
+- **webpack.config.js** - Configurações de build customizadas
+- **tailwind.config.js** - Configuração do Tailwind CSS
+- **.env.example** - Template de variáveis de ambiente
+
 ## 🚀 **URLs Funcionais (Já Deployadas)**
 
 ### 🌐 **Frontend**
