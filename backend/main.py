@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
+from dotenv import load_dotenv
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -10,8 +11,10 @@ import hmac
 from functools import wraps
 import jwt
 
+load_dotenv()
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'livehot-secret-key-change-in-production'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'livehot-secret-key-change-in-production')
 
 # LiveKit configuration for scalable streaming
 LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'wss://livekit.example.com')
