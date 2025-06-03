@@ -32,12 +32,24 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  const request = event.request;
+  const url = new URL(request.url);
+
+  if (url.pathname.startsWith('/api')) {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(request))
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      return (
-        cached ||
-        fetch(event.request).catch(() => caches.match('/index.html'))
-      );
+    caches.match(request).then(cached => {
+      const fetchPromise = fetch(request).then(response => {
+        const cloned = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(request, cloned));
+        return response;
+      });
+      return cached || fetchPromise.catch(() => caches.match('/index.html'));
     })
   );
 });
