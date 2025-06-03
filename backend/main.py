@@ -5,12 +5,14 @@ import os
 from dotenv import load_dotenv
 import json
 import uuid
+from io import BytesIO
 from datetime import datetime, timedelta
 import hashlib
 import base64
 import hmac
 from functools import wraps
 import jwt
+from PIL import Image
 
 load_dotenv()
 
@@ -478,6 +480,31 @@ def purchase_coins(current_user):
             'transactionId': str(uuid.uuid4())
         }
     })
+
+# Image upload with automatic compression
+@app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': {'message': 'Image missing'}}), 400
+
+    file = request.files['image']
+    try:
+        img = Image.open(file.stream)
+    except Exception:
+        return jsonify({'success': False, 'error': {'message': 'Invalid image'}}), 400
+
+    img_io = BytesIO()
+    img.convert('RGB').save(img_io, 'JPEG', quality=70, optimize=True)
+    img_io.seek(0)
+
+    uploads_dir = os.path.join('backend', 'static', 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+    filename = f"{uuid.uuid4()}.jpg"
+    filepath = os.path.join(uploads_dir, filename)
+    with open(filepath, 'wb') as f:
+        f.write(img_io.read())
+
+    return jsonify({'success': True, 'data': {'url': f'/static/uploads/{filename}'}})
 
 # Users routes
 @app.route('/api/users/<user_id>', methods=['GET'])

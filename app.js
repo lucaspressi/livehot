@@ -250,7 +250,7 @@ async function loadStreams() {
         }
         container.innerHTML = streams.map(stream => `
             <div class="slide">
-                <img src="${stream.thumbnailUrl}" alt="${stream.title}" class="w-full h-full object-cover" onerror="this.src='${stream.thumbnailUrl}'" />
+                <img src="${stream.thumbnailUrl}" loading="lazy" alt="${stream.title}" class="w-full h-full object-cover" onerror="this.src='${stream.thumbnailUrl}'" />
                 <div class="absolute bottom-0 left-0 p-4 text-white bg-black/50 w-full">
                     <div class="font-bold">${stream.streamer.displayName}</div>
                     <div class="text-sm">${stream.title}</div>
@@ -357,6 +357,9 @@ async function startStreamBroadcast() {
         const response = await api.startBroadcast(currentStream.id);
         const { url, token } = response.data;
 
+        if (!window.livekitClient) {
+            window.livekitClient = await import('https://unpkg.com/livekit-client/dist/livekit-client.esm.js');
+        }
         if (window.livekitClient) {
             const { connect, createLocalTracks } = window.livekitClient;
             livekitRoom = await connect(url, token);
@@ -391,6 +394,22 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Show home page by default
     showPage('home');
+
+    // Lazy load videos
+    const videos = document.querySelectorAll('video[data-src]');
+    const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const video = entry.target;
+                if (!video.src) {
+                    video.src = video.dataset.src;
+                    video.load();
+                }
+                observer.unobserve(video);
+            }
+        });
+    }, { threshold: 0.25 });
+    videos.forEach(v => observer.observe(v));
     
     startLoginTimer();
     document.getElementById("login-modal-login").addEventListener("click", () => { cancelLoginTimer(); showPage("login"); });
