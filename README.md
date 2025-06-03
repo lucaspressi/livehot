@@ -12,6 +12,11 @@ livehot-package/
 │   └── main.py                # API principal com todas as funcionalidades
 ├── index.html                 # Frontend HTML/CSS/JS
 ├── app.js                     # JavaScript da aplicação
+├── src/
+│   └── assets/
+│       ├── images/            # Imagens do app (logo, placeholders)
+│       ├── icons/             # Ícones SVG customizados
+│       └── sounds/            # Sons de notificação e efeitos
 ├── requirements.txt           # Dependências Python
 ├── relatorio_correcao_final.md # Relatório completo da correção
 ├── diagnostico_problemas.md   # Diagnóstico dos problemas originais

@@ -5,7 +5,7 @@ const OFFLINE_URLS = [
   '/app.js',
   '/config.js',
   '/manifest.json',
-  '/icons/icon.svg',
+  '/src/assets/icons/icon.svg',
 ];
 
 self.addEventListener('install', event => {
@@ -47,8 +47,8 @@ self.addEventListener('push', event => {
   const title = data.title || 'LiveHot';
   const options = {
     body: data.body || '',
-    icon: '/icons/icon.svg',
-    badge: '/icons/icon.svg',
+    icon: '/src/assets/icons/icon.svg',
+    badge: '/src/assets/icons/icon.svg',
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
