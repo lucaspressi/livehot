@@ -97,7 +97,7 @@ function hideElement(id) {
     document.getElementById(id).classList.add('hidden');
 }
 
-function showPage(pageId) {
+function showPage(pageId, streamId = null) {
     // Hide all pages
     document.querySelectorAll('.page').forEach(page => {
         page.classList.add('hidden');
@@ -120,7 +120,7 @@ function showPage(pageId) {
     // Load page content
     switch(pageId) {
         case 'home':
-            loadStreams();
+            loadStreams(streamId);
             break;
         case 'wallet':
             loadWallet();
@@ -238,7 +238,7 @@ function cancelLoginTimer() {
 }
 
 // Stream functions
-async function loadStreams() {
+async function loadStreams(highlightId = null) {
     const container = document.getElementById('feed');
     try {
         container.innerHTML = `<div class="text-center text-slate-400 py-12">Carregando streams...</div>`;
@@ -249,7 +249,7 @@ async function loadStreams() {
             return;
         }
         container.innerHTML = streams.map(stream => `
-            <div class="slide">
+            <div class="slide" data-stream-id="${stream.id}">
                 <img src="${stream.thumbnailUrl}" alt="${stream.title}" class="w-full h-full object-cover" onerror="this.src='${stream.thumbnailUrl}'" />
                 <div class="absolute bottom-0 left-0 p-4 text-white bg-black/50 w-full">
                     <div class="font-bold">${stream.streamer.displayName}</div>
@@ -258,12 +258,18 @@ async function loadStreams() {
                 <div class="actions">
                     <button>❤️</button>
                     <button>🎁</button>
-                    <button>🔗</button>
+                    <button onclick="shareStream('${stream.id}')">🔗</button>
                     <button>➕</button>
                 </div>
                 <div class="chat"></div>
             </div>
         `).join('');
+        if (highlightId) {
+            const slide = container.querySelector(`[data-stream-id="${highlightId}"]`);
+            if (slide) {
+                slide.scrollIntoView({behavior: 'smooth'});
+            }
+        }
     } catch (error) {
         container.innerHTML = `
             <div class="text-center text-red-400 py-12">
@@ -275,6 +281,15 @@ async function loadStreams() {
             </div>
         `;
     }
+}
+
+function shareStream(id) {
+    const url = `${window.location.origin}/streams/${id}`;
+    navigator.clipboard.writeText(url).then(() => {
+        showNotification('Link copiado para a área de transferência!', 'success');
+    }).catch(() => {
+        window.open(url, '_blank');
+    });
 }
 
 // Wallet functions
@@ -389,8 +404,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     showElement('app');
     showElement('navigation');
     
-    // Show home page by default
-    showPage('home');
+    const params = new URLSearchParams(window.location.search);
+    const streamParam = params.get('stream');
+
+    // Show home page by default, highlighting stream if provided
+    showPage('home', streamParam);
     
     startLoginTimer();
     document.getElementById("login-modal-login").addEventListener("click", () => { cancelLoginTimer(); showPage("login"); });
@@ -482,4 +500,5 @@ window.showPage = showPage;
 window.fillDemoCredentials = fillDemoCredentials;
 window.toggleAuth = toggleAuth;
 window.purchaseCoins = purchaseCoins;
+window.shareStream = shareStream;
 

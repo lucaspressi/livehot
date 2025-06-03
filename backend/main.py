@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, abort, url_for, make_response
 from flask_cors import CORS
 from backend.routes.user import user_bp
 import os
@@ -501,6 +501,31 @@ def health_check():
         'users': len(users),
         'streams': len([s for s in streams.values() if s['isLive']])
     })
+
+# SEO and sharing routes
+@app.route('/streams/<stream_id>')
+def share_stream(stream_id):
+    stream = streams.get(stream_id)
+    if not stream:
+        abort(404)
+
+    url = request.url
+    return render_template('share.html', stream=stream, url=url)
+
+
+@app.route('/sitemap.xml')
+def sitemap():
+    pages = [url_for('sitemap', _external=True)]
+    for stream in streams.values():
+        pages.append(url_for('share_stream', stream_id=stream['id'], _external=True))
+
+    xml_items = '\n'.join(f'<url><loc>{p}</loc></url>' for p in pages)
+    xml = f'<?xml version="1.0" encoding="UTF-8"?>\n' \
+          f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{xml_items}</urlset>'
+
+    response = make_response(xml)
+    response.headers['Content-Type'] = 'application/xml'
+    return response
 
 # Root endpoint
 @app.route('/')
