@@ -14,7 +14,8 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     environment:
-      - API_BASE_URL=http://backend:5000/api
+      # Use localhost so the API is reachable from the host browser
+      - API_BASE_URL=http://localhost:5000/api
     ports:
       - "8000:80"
     depends_on:
