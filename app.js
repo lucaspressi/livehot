@@ -13,6 +13,11 @@ let previewStream = null;
 let viewerRoom = null;
 let currentPlayingStreamId = null;
 
+// Feed pagination state
+let feedPage = 1;
+let feedLoading = false;
+const feedLimit = 5;
+
 // Theme system
 const defaultTheme = { mode: 'dark', accentColor: '#ec4899', special: '' };
 
@@ -294,7 +299,7 @@ function showPage(pageId) {
     // Load page content
     switch(pageId) {
         case 'home':
-            loadStreams();
+            loadMoreStreams();
             break;
         case 'wallet':
             loadWallet();
@@ -506,7 +511,7 @@ function toggleCamera() {
     cameraEnabled = !cameraEnabled;
     const btn = document.getElementById('camera-btn');
     if (btn) {
-        btn.textContent = cameraEnabled ? '📹' : '📷';
+        btn.textContent = cameraEnabled ? '📹 Câmera Ligada' : '📹 Câmera Desligada';
         btn.classList.toggle('bg-green-600', cameraEnabled);
         btn.classList.toggle('bg-gray-600', !cameraEnabled);
         btn.setAttribute('aria-pressed', cameraEnabled.toString());
@@ -529,7 +534,7 @@ function toggleMic() {
     micEnabled = !micEnabled;
     const btn = document.getElementById('mic-btn');
     if (btn) {
-        btn.textContent = micEnabled ? '🎤' : '🔇';
+        btn.textContent = micEnabled ? '🎤 Microfone Ligado' : '🎤 Microfone Desligado';
         btn.classList.toggle('bg-green-600', micEnabled);
         btn.classList.toggle('bg-gray-600', !micEnabled);
         btn.setAttribute('aria-pressed', micEnabled.toString());
@@ -632,76 +637,49 @@ async function startStreamBroadcast() {
     }
 }
 
-// Stream functions
-async function loadStreams() {
+// Stream feed functions
+async function loadMoreStreams() {
+    if (feedLoading) return;
+    
     const container = document.getElementById('feed');
     if (!container) return;
-    
-    container.innerHTML = '<div class="text-center py-8" role="status" aria-live="polite">Carregando streams...</div>';
-    
+
+    feedLoading = true;
     try {
-        const response = await api.getStreams();
+        const response = await api.getStreams(feedPage, feedLimit);
         const streams = response.data.streams || [];
-        
-        if (streams.length === 0) {
-            container.innerHTML = `
-                <div class="text-center py-12">
-                    <div class="text-4xl mb-4" role="img" aria-label="Televisão">📺</div>
-                    <p class="text-slate-400">Nenhuma stream ao vivo no momento</p>
-                </div>
-            `;
+
+        if (streams.length === 0 && feedPage === 1) {
+            container.innerHTML = '<div class="text-center text-slate-400 py-12">Nenhuma stream ao vivo</div>';
+            feedLoading = false;
             return;
         }
-        
-        container.innerHTML = streams.map(stream => `
-            <div class="stream-card bg-slate-800 rounded-lg overflow-hidden cursor-pointer hover:bg-slate-700 transition-colors focus:ring-2 focus:ring-pink-500" 
-                 onclick="openStream('${stream.id}')" 
-                 onkeydown="if(event.key==='Enter'||event.key===' ') openStream('${stream.id}')" 
-                 tabindex="0"
-                 role="button"
-                 aria-label="Abrir stream: ${stream.title} por ${stream.streamer.displayName}">
-                <div class="relative">
-                    <img src="${stream.thumbnailUrl}" 
-                         alt="Thumbnail da stream: ${stream.title}" 
-                         class="w-full h-48 object-cover" 
-                         loading="lazy" />
-                    <div class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded text-xs"
-                         role="status" aria-label="Ao vivo">
-                        🔴 AO VIVO
-                    </div>
-                    <div class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs"
-                         aria-label="${stream.viewerCount} espectadores">
-                        ${stream.viewerCount} viewers
-                    </div>
-                </div>
-                <div class="p-4">
-                    <div class="flex items-center mb-2">
-                        <img src="${stream.streamer.avatarUrl}" 
-                             alt="Avatar de ${stream.streamer.displayName}" 
-                             class="w-8 h-8 rounded-full mr-2" />
-                        <span class="font-semibold text-white">${stream.streamer.displayName}</span>
-                        ${stream.streamer.isVerified ? '<span class="ml-1 text-blue-400" aria-label="Verificado">✓</span>' : ''}
-                    </div>
-                    <h3 class="text-white font-medium mb-1 line-clamp-2">${stream.title}</h3>
-                    <p class="text-slate-400 text-sm">${stream.category}</p>
-                </div>
-            </div>
-        `).join('');
-        
+
+        streams.forEach(stream => {
+            const slide = document.createElement('div');
+            slide.className = 'slide';
+            slide.innerHTML = `
+                <img src="${stream.thumbnailUrl}" alt="${stream.title}">
+                <div class="actions">
+                    <button onclick="likeStream('${stream.id}')" aria-label="Curtir stream ${stream.title}">❤️</button>
+                    <button onclick="shareStream('${stream.id}')" aria-label="Compartilhar stream ${stream.title}">🔗</button>
+                </div>`;
+            container.appendChild(slide);
+        });
+
+        feedPage += 1;
         announceToScreenReader(`${streams.length} streams carregadas`);
-        
     } catch (error) {
         console.error('Error loading streams:', error);
-        container.innerHTML = `
-            <div class="text-center text-red-400 py-12" role="alert">
-                <div class="text-4xl mb-4" role="img" aria-label="Erro">❌</div>
-                <p>Erro ao carregar streams: ${error.message}</p>
-                <button onclick="loadStreams()" 
-                        class="mt-4 bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded focus:ring-2 focus:ring-pink-500">
-                    Tentar Novamente
-                </button>
-            </div>
-        `;
+    }
+    feedLoading = false;
+}
+
+// Legacy compatibility function
+async function loadStreams() {
+    const feed = document.getElementById('feed');
+    if (feed && feed.childElementCount <= 1) {
+        await loadMoreStreams();
     }
 }
 
@@ -772,8 +750,13 @@ async function loadWallet() {
         const response = await api.getWallet();
         const balance = response.data.balance || 0;
         
-        const balanceElements = document.querySelectorAll('.wallet-balance');
+        const balanceElements = document.querySelectorAll('#wallet-balance');
         balanceElements.forEach(el => {
+            el.textContent = `${balance} moedas`;
+        });
+        
+        const walletElements = document.querySelectorAll('.wallet-balance');
+        walletElements.forEach(el => {
             el.textContent = `${balance} coins`;
         });
         
@@ -837,6 +820,25 @@ function toggleAuth() {
     }
 }
 
+// Additional stream interaction functions
+function likeStream(streamId) {
+    showNotification('Curtida enviada!', 'success');
+    announceToScreenReader('Stream curtida');
+}
+
+function shareStream(streamId) {
+    if (navigator.share) {
+        navigator.share({
+            title: 'LiveHot Stream',
+            url: `${window.location.origin}/stream/${streamId}`
+        });
+    } else {
+        navigator.clipboard.writeText(`${window.location.origin}/stream/${streamId}`);
+        showNotification('Link copiado!', 'success');
+    }
+    announceToScreenReader('Stream compartilhada');
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', async function() {
     // Initialize accessibility features
@@ -892,16 +894,23 @@ document.addEventListener('DOMContentLoaded', async function() {
     const feed = document.getElementById("feed");
     if (feed) {
         let touchStartY = 0;
-        feed.addEventListener("touchstart", e => { 
-            touchStartY = e.touches[0].clientY; 
+        feed.addEventListener("touchstart", e => {
+            touchStartY = e.touches[0].clientY;
         });
-        feed.addEventListener("touchend", e => { 
-            const diff = e.changedTouches[0].clientY - touchStartY; 
-            if (diff > 50) { 
-                feed.scrollBy({top: -window.innerHeight, behavior: "smooth"}); 
-            } else if (diff < -50) { 
-                feed.scrollBy({top: window.innerHeight, behavior: "smooth"}); 
-            } 
+        feed.addEventListener("touchend", e => {
+            const diff = e.changedTouches[0].clientY - touchStartY;
+            if (diff > 50) {
+                feed.scrollBy({top: -window.innerHeight, behavior: "smooth"});
+            } else if (diff < -50) {
+                feed.scrollBy({top: window.innerHeight, behavior: "smooth"});
+            }
+        });
+
+        // Infinite scroll
+        feed.addEventListener('scroll', () => {
+            if (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50) {
+                loadMoreStreams();
+            }
         });
     }
 
@@ -915,9 +924,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             feed.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+            announceToScreenReader('Próxima stream');
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             feed.scrollBy({ top: -window.innerHeight, behavior: 'smooth' });
+            announceToScreenReader('Stream anterior');
         }
     });
 
@@ -1056,5 +1067,5 @@ window.openStream = openStream;
 window.closePlayer = closePlayer;
 window.toggleContrast = toggleContrast;
 window.toggleCaptions = toggleCaptions;
-
-
+window.likeStream = likeStream;
+window.shareStream = shareStream;
