@@ -1,0 +1,22 @@
+/* Utility component classes */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.button {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.button-primary {
+  background-color: #2563eb;
+  color: #fff;
+}
+
+.button-primary:hover {
+  background-color: #1d4ed8;
+}
