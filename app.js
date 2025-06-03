@@ -6,6 +6,7 @@ let currentUser = null;
 let currentStream = null;
 let cameraEnabled = false;
 let micEnabled = false;
+let livekitRoom = null;
 
 // API Service
 const api = {
@@ -66,6 +67,12 @@ const api = {
         });
     },
 
+    async startBroadcast(streamId) {
+        return this.request(`/broadcast/${streamId}`, {
+            method: 'POST',
+        });
+    },
+
     // Wallet
     async getWallet() {
         return this.request('/wallet');
@@ -93,6 +100,11 @@ function showPage(pageId) {
     document.querySelectorAll('.page').forEach(page => {
         page.classList.add('hidden');
     });
+
+    // Hide live broadcast UI when leaving broadcast page
+    if (pageId !== 'broadcast') {
+        hideElement('broadcast-session');
+    }
     
     // Show selected page
     showElement(`${pageId}-page`);
@@ -116,6 +128,9 @@ function showPage(pageId) {
                 showPage('home');
                 alert('Apenas streamers podem acessar esta página');
                 return;
+            }
+            if (livekitRoom) {
+                showElement('broadcast-session');
             }
             break;
     }
@@ -352,11 +367,28 @@ async function startStreamBroadcast() {
         showNotification('Nenhuma stream criada', 'error');
         return;
     }
-    
+
     try {
-        await api.startStream(currentStream.id);
+        const response = await api.startBroadcast(currentStream.id);
+        const { url, token } = response.data;
+
+        if (window.livekitClient) {
+            const { connect, createLocalTracks } = window.livekitClient;
+            livekitRoom = await connect(url, token);
+            const tracks = await createLocalTracks({
+                audio: micEnabled,
+                video: cameraEnabled,
+            });
+            tracks.forEach(track => {
+                livekitRoom.localParticipant.publishTrack(track);
+                if (track.kind === 'video') {
+                    track.attach(document.getElementById('broadcast-video'));
+                }
+            });
+        }
+
         showNotification('Stream iniciada com sucesso!', 'success');
-        showPage('home');
+        showElement('broadcast-session');
     } catch (error) {
         showNotification('Erro ao iniciar stream: ' + error.message, 'error');
     }

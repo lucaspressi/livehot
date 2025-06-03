@@ -51,6 +51,14 @@ cd backend
 python main.py
 ```
 
+Opcionalmente, defina variáveis de ambiente para integrar com o LiveKit:
+
+```bash
+export LIVEKIT_URL=wss://seu-servidor-livekit
+export LIVEKIT_API_KEY=sua-chave
+export LIVEKIT_API_SECRET=seu-segredo
+```
+
 3. **API estará disponível em:** `http://localhost:5000`
 
 ### **Frontend (HTML/CSS/JS)**
@@ -96,6 +104,7 @@ npx serve .
 - `POST /api/streams` - Criar nova stream
 - `POST /api/streams/{id}/start` - Iniciar transmissão
 - `POST /api/streams/{id}/stop` - Parar transmissão
+- `POST /api/broadcast/{id}` - Obter token de transmissão (LiveKit)
 
 ### **Gifts**
 - `GET /api/gifts` - Listar gifts disponíveis

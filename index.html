@@ -157,6 +157,10 @@
                     <button id="start-stream-btn" class="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded transition-colors font-medium text-lg">
                         🔴 Iniciar Transmissão ao Vivo
                     </button>
+
+                    <div id="broadcast-session" class="hidden space-y-4 mt-6">
+                        <video id="broadcast-video" class="w-full rounded" autoplay playsinline></video>
+                    </div>
                 </div>
             </div>
         </div>
@@ -251,6 +255,7 @@
         </div>
     </nav>
 
+    <script src="https://unpkg.com/livekit-client/dist/livekit-client.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
