@@ -363,6 +363,7 @@
                     </select>
                 </div>
                 <button id="save-profile" class="btn-accent text-white px-4 py-2 rounded w-full">Salvar</button>
+                <button id="open-analytics" class="bg-slate-600 text-white px-4 py-2 rounded w-full mt-2">Ver Analytics</button>
             </div>
         </div>
 
@@ -376,8 +377,17 @@
                 </div>
             </div>
         </div>
+
+        <!-- Analytics Page -->
+        <div id="analytics-page" class="page hidden">
+            <div class="p-4">
+                <h1 class="text-2xl font-bold text-white mb-6">Analytics</h1>
+                <pre id="analytics-data" class="text-slate-300"></pre>
+            </div>
+        </div>
     </div>
 
+    <button id="install-btn" onclick="installApp()" class="fixed bottom-4 right-4 btn-accent text-white px-4 py-2 rounded hidden">Instalar App</button>
 
     <script src="config.js"></script>
     <script>

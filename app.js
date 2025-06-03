@@ -662,7 +662,7 @@ async function loadMoreStreams() {
             const slide = document.createElement('div');
             slide.className = 'slide';
             slide.innerHTML = `
-                <img src="${stream.thumbnailUrl}" alt="${stream.title}">
+                <img src="${stream.thumbnailUrl}" alt="${stream.title}" loading="lazy">
                 <div class="actions">
                     <button onclick="likeStream('${stream.id}')" aria-label="Curtir stream ${stream.title}">❤️</button>
                     <button onclick="shareStream('${stream.id}')" aria-label="Compartilhar stream ${stream.title}">🔗</button>
@@ -842,6 +842,74 @@ function shareStream(streamId) {
     announceToScreenReader('Stream compartilhada');
 }
 
+// PWA and analytics functions
+let deferredInstall;
+async function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        try {
+            const registration = await navigator.serviceWorker.register('service-worker.js');
+            if ('PushManager' in window && window.VAPID_PUBLIC_KEY) {
+                subscribePush(registration);
+            }
+        } catch (e) {
+            console.warn('SW registration failed', e);
+        }
+    }
+}
+
+async function subscribePush(reg) {
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return;
+        const sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(window.VAPID_PUBLIC_KEY)
+        });
+        console.log('Push subscribed', sub);
+    } catch (err) {
+        console.warn('Push subscription failed', err);
+    }
+}
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstall = e;
+    const btn = document.getElementById('install-btn');
+    if (btn) btn.classList.remove('hidden');
+});
+
+async function installApp() {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    await deferredInstall.userChoice;
+    deferredInstall = null;
+    const btn = document.getElementById('install-btn');
+    if (btn) btn.classList.add('hidden');
+}
+
+async function loadAnalytics() {
+    try {
+        const response = await api.request('/analytics');
+        const pre = document.getElementById('analytics-data');
+        if (pre) {
+            pre.textContent = JSON.stringify(response.data, null, 2);
+        }
+    } catch (err) {
+        console.error('Analytics error', err);
+    }
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', async function() {
     // Initialize accessibility features
@@ -874,6 +942,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (!currentUser) {
         startLoginTimer();
     }
+
+    // Initialize PWA features
+    registerServiceWorker();
+
+    const installBtn = document.getElementById('install-btn');
+    if (installBtn) installBtn.addEventListener('click', installApp);
+
+    const analyticsBtn = document.getElementById('open-analytics');
+    if (analyticsBtn) analyticsBtn.addEventListener('click', () => {
+        loadAnalytics();
+        showPage('analytics');
+    });
     
     // Login modal handlers
     const loginModalLogin = document.getElementById("login-modal-login");
@@ -1072,3 +1152,4 @@ window.toggleContrast = toggleContrast;
 window.toggleCaptions = toggleCaptions;
 window.likeStream = likeStream;
 window.shareStream = shareStream;
+window.installApp = installApp;
