@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from backend.routes.user import user_bp
 import os
 import json
 import uuid
@@ -19,11 +20,14 @@ LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
 LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')
 
 # Enable CORS for all routes with specific configuration
-CORS(app, 
+CORS(app,
      origins=['*'],
      allow_headers=['Content-Type', 'Authorization'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
      supports_credentials=True)
+
+# Register user routes
+app.register_blueprint(user_bp, url_prefix='/api')
 
 # Simple JWT implementation
 def create_token(payload, secret, expiry_hours=168):
