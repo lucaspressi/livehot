@@ -413,7 +413,6 @@ def broadcast_stream(current_user, stream_id):
         }
     })
 
-
 @app.route('/api/streams/<stream_id>/watch', methods=['POST'])
 @token_required
 def watch_stream(current_user, stream_id):
@@ -466,7 +465,6 @@ def streams_ranking():
     ranked = sorted(live_streams, key=lambda s: s.get('viewerCount', 0), reverse=True)[:limit]
     return jsonify({'success': True, 'data': {'streams': ranked}})
 
-
 @app.route('/api/streams/trending', methods=['GET'])
 def streams_trending():
     limit = int(request.args.get('limit', 10))
@@ -476,7 +474,6 @@ def streams_trending():
     trending = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
     return jsonify({'success': True, 'data': {'streams': trending}})
 
-
 @app.route('/api/streams/categories', methods=['GET'])
 def stream_categories():
     categories = {}
@@ -485,7 +482,6 @@ def stream_categories():
             categories[s['category']] = categories.get(s['category'], 0) + 1
     category_list = [{'name': k, 'count': v} for k, v in categories.items()]
     return jsonify({'success': True, 'data': {'categories': category_list}})
-
 
 @app.route('/api/streams/recommendations', methods=['GET'])
 @token_required

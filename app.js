@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, abort, url_for, make_response
 from flask_cors import CORS
 from backend.routes.user import user_bp
 import os
@@ -413,7 +413,6 @@ def broadcast_stream(current_user, stream_id):
         }
     })
 
-
 @app.route('/api/streams/<stream_id>/watch', methods=['POST'])
 @token_required
 def watch_stream(current_user, stream_id):
@@ -466,7 +465,6 @@ def streams_ranking():
     ranked = sorted(live_streams, key=lambda s: s.get('viewerCount', 0), reverse=True)[:limit]
     return jsonify({'success': True, 'data': {'streams': ranked}})
 
-
 @app.route('/api/streams/trending', methods=['GET'])
 def streams_trending():
     limit = int(request.args.get('limit', 10))
@@ -476,7 +474,6 @@ def streams_trending():
     trending = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
     return jsonify({'success': True, 'data': {'streams': trending}})
 
-
 @app.route('/api/streams/categories', methods=['GET'])
 def stream_categories():
     categories = {}
@@ -485,7 +482,6 @@ def stream_categories():
             categories[s['category']] = categories.get(s['category'], 0) + 1
     category_list = [{'name': k, 'count': v} for k, v in categories.items()]
     return jsonify({'success': True, 'data': {'categories': category_list}})
-
 
 @app.route('/api/streams/recommendations', methods=['GET'])
 @token_required
@@ -650,7 +646,7 @@ def health_check():
         'streams': len([s for s in streams.values() if s['isLive']])
     })
 
-
+# Analytics endpoint
 @app.route('/api/analytics', methods=['GET'])
 def get_analytics():
     total_users = analytics['registrations'] + len(demo_users)
@@ -668,6 +664,37 @@ def get_analytics():
         }
     })
 
+# SEO and sharing routes
+@app.route('/streams/<stream_id>')
+def share_stream(stream_id):
+    """Public sharing page for streams with SEO meta tags"""
+    stream = streams.get(stream_id)
+    if not stream:
+        abort(404)
+
+    url = request.url
+    return render_template('share.html', stream=stream, url=url)
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """Generate sitemap for SEO optimization"""
+    pages = [url_for('index', _external=True)]
+    
+    # Add all public stream pages to sitemap
+    for stream in streams.values():
+        if not stream.get('isPrivate', False):  # Only include public streams
+            pages.append(url_for('share_stream', stream_id=stream['id'], _external=True))
+
+    xml_items = '\n'.join(f'<url><loc>{p}</loc></url>' for p in pages)
+    xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{xml_items}
+</urlset>'''
+
+    response = make_response(xml)
+    response.headers['Content-Type'] = 'application/xml'
+    return response
+
 # Root endpoint
 @app.route('/')
 def index():
@@ -681,7 +708,9 @@ def index():
             'gifts': '/api/gifts',
             'wallet': '/api/wallet',
             'users': '/api/users/*',
-            'health': '/api/health'
+            'health': '/api/health',
+            'analytics': '/api/analytics',
+            'sitemap': '/sitemap.xml'
         },
         'demo_credentials': {
             'streamer': {'email': 'demo@livehot.app', 'password': 'password123'},
