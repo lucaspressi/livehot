@@ -64,7 +64,7 @@ window.API_BASE_URL = 'http://localhost:5000/api';
 cd backend
 poetry run python main.py
 ```
-As variáveis definidas no arquivo `.env` serão carregadas automaticamente. Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` conforme necessário.
+As variáveis definidas no arquivo `.env` serão carregadas automaticamente. Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` conforme necessário. Para uso local, defina `LIVEKIT_URL` como `ws://localhost:7880`.
 
 4. **API estará disponível em:** `http://localhost:5000`
 
@@ -83,7 +83,7 @@ npx serve .
 
 ### 🚢 **Usando Docker**
 
-1. **Construir e iniciar os serviços:**
+1. **Construir e iniciar os serviços (backend, frontend e LiveKit):**
 ```bash
 docker-compose up --build
 ```
@@ -94,6 +94,7 @@ do próprio host enquanto os serviços rodam em contêineres.
 
 2. **Frontend disponível em:** `http://localhost:8000`
 3. **Backend disponível em:** `http://localhost:5000`
+4. **LiveKit disponível em:** `ws://localhost:7880`
 
 ## ✅ **Funcionalidades Implementadas**
 
@@ -122,6 +123,11 @@ do próprio host enquanto os serviços rodam em contêineres.
 
 ### **Streams**
 - `GET /api/streams` - Listar streams ativas
+- `GET /api/streams?category={nome}` - Filtrar por categoria
+- `GET /api/streams/ranking` - Ranking por viewers em tempo real
+- `GET /api/streams/trending` - Streams em alta por engajamento
+- `GET /api/streams/categories` - Categorias disponíveis
+- `GET /api/streams/recommendations` - Recomendações personalizadas (requer login)
 - `POST /api/streams` - Criar nova stream
 - `POST /api/streams/{id}/start` - Iniciar transmissão
 - `POST /api/streams/{id}/stop` - Parar transmissão
@@ -134,6 +140,9 @@ do próprio host enquanto os serviços rodam em contêineres.
 ### **Carteira**
 - `GET /api/wallet` - Dados da carteira
 - `POST /api/wallet/purchase` - Comprar moedas
+
+### **Usuário**
+- `PUT /api/users/preferences` - Atualizar categorias favoritas
 
 ## 🎯 **Status do Projeto**
 
