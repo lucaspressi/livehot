@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="LiveHot - Plataforma Premium de Live Streaming">
+    <meta property="og:description" content="Assista e compartilhe lives incríveis na LiveHot">
+    <meta property="og:type" content="website">
     <title>LiveHot - Plataforma Premium de Live Streaming</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#d946ef">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .line-clamp-2 {
@@ -235,7 +240,7 @@
                     </button>
 
                     <div id="broadcast-session" class="hidden space-y-4 mt-6">
-                        <video id="broadcast-video" class="w-full rounded" autoplay playsinline></video>
+                        <video id="broadcast-video" class="w-full rounded" preload="none" playsinline data-src=""></video>
                     </div>
                 </div>
             </div>
@@ -368,9 +373,12 @@
         </div>
     </nav>
 
-    <script src="https://unpkg.com/livekit-client/dist/livekit-client.min.js"></script>
     <script src="config.js"></script>
-    <script src="app.js"></script>
+    <script>
+        const script = document.createElement('script');
+        script.src = (window.CDN_BASE_URL || '') + 'app.js';
+        document.body.appendChild(script);
+    </script>
 </body>
 </html>
 

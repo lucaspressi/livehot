@@ -1,16 +1,18 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, abort, url_for, make_response
 from flask_cors import CORS
 from backend.routes.user import user_bp
 import os
 from dotenv import load_dotenv
 import json
 import uuid
+from io import BytesIO
 from datetime import datetime, timedelta
 import hashlib
 import base64
 import hmac
 from functools import wraps
 import jwt
+from PIL import Image
 
 load_dotenv()
 
@@ -94,6 +96,15 @@ def generate_livekit_token(room, identity, name, can_publish=False, ttl_seconds=
 # In-memory storage
 users = {}
 streams = {}
+analytics = {
+    'view_time': {},       # total seconds watched per stream
+    'watch_sessions': {},  # (user_id, stream_id) -> start_time
+    'visitor_count': 0,
+    'registrations': 0,
+    'logins': {},          # user_id -> [timestamps]
+    'gifts_sent': 0,
+    'revenue': 0.0
+}
 gifts = [
     {"id": "1", "name": "Heart", "emoji": "❤️", "costCoins": 10, "rarity": "COMMON"},
     {"id": "2", "name": "Rose", "emoji": "🌹", "costCoins": 25, "rarity": "UNCOMMON"},
@@ -101,7 +112,7 @@ gifts = [
     {"id": "4", "name": "Crown", "emoji": "👑", "costCoins": 500, "rarity": "LEGENDARY"}
 ]
 
-# Demo users
+# Demo users with theme support
 demo_users = {
     "demo@livehot.app": {
         "id": "demo-user-1",
@@ -113,10 +124,11 @@ demo_users = {
         "isVerified": True,
         "walletBalance": 1000,
         "avatarUrl": "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
+        "createdAt": datetime.now().isoformat(),
+        "preferredCategories": [],
         "theme": "dark",
         "accentColor": "#ec4899",
-        "specialTheme": "",
-        "createdAt": datetime.now().isoformat()
+        "specialTheme": ""
     },
     "viewer@livehot.app": {
         "id": "demo-user-2", 
@@ -128,10 +140,11 @@ demo_users = {
         "isVerified": False,
         "walletBalance": 500,
         "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+        "createdAt": datetime.now().isoformat(),
+        "preferredCategories": [],
         "theme": "dark",
         "accentColor": "#ec4899",
-        "specialTheme": "",
-        "createdAt": datetime.now().isoformat()
+        "specialTheme": ""
     }
 }
 
@@ -147,6 +160,7 @@ demo_streams = [
         "isLive": True,
         "isPrivate": False,
         "viewerCount": 127,
+        "giftCount": 0,
         "streamerId": "demo-user-1",
         "streamer": demo_users["demo@livehot.app"],
         "startedAt": datetime.now().isoformat(),
@@ -191,9 +205,11 @@ def login():
     user = users.get(email)
     if not user or user['passwordHash'] != hashlib.sha256(password.encode()).hexdigest():
         return jsonify({'success': False, 'error': {'message': 'Invalid credentials'}}), 401
-    
+
     token = create_token({'email': email}, app.config['SECRET_KEY'])
-    
+
+    analytics['logins'].setdefault(user['id'], []).append(datetime.now())
+
     return jsonify({
         'success': True,
         'data': {
@@ -227,12 +243,16 @@ def register():
         'isVerified': False,
         'walletBalance': 100,
         'avatarUrl': f"https://ui-avatars.com/api/?name={displayName}&background=random",
+        'createdAt': datetime.now().isoformat(),
+        'preferredCategories': [],
         'theme': 'dark',
         'accentColor': '#ec4899',
-        'specialTheme': '',
-        'createdAt': datetime.now().isoformat()
+        'specialTheme': ''
     }
-    
+
+    analytics['registrations'] += 1
+    analytics['logins'].setdefault(user_id, []).append(datetime.now())
+
     token = create_token({'email': email}, app.config['SECRET_KEY'])
     
     return jsonify({
@@ -254,10 +274,26 @@ def get_current_user(current_user):
 # Streams routes
 @app.route('/api/streams', methods=['GET'])
 def get_streams():
+    if not request.headers.get('Authorization'):
+        analytics['visitor_count'] += 1
+
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 20))
-    
+    category = request.args.get('category')
+
+    token = request.headers.get('Authorization')
+    if token and token.startswith('Bearer '):
+        data = verify_token(token[7:], app.config['SECRET_KEY'])
+        if data:
+            current_user = users.get(data['email'])
+            if current_user is not None and category:
+                prefs = current_user.setdefault('preferredCategories', [])
+                if category not in prefs:
+                    prefs.append(category)
+
     live_streams = [s for s in streams.values() if s['isLive']]
+    if category:
+        live_streams = [s for s in live_streams if s['category'].lower() == category.lower()]
     total = len(live_streams)
     
     start = (page - 1) * limit
@@ -305,6 +341,7 @@ def create_stream(current_user):
         'isLive': False,
         'isPrivate': data.get('isPrivate', False),
         'viewerCount': 0,
+        'giftCount': 0,
         'streamerId': current_user['id'],
         'streamer': {k: v for k, v in current_user.items() if k != 'passwordHash'},
         'startedAt': datetime.now().isoformat(),
@@ -385,6 +422,24 @@ def broadcast_stream(current_user, stream_id):
         }
     })
 
+@app.route('/api/streams/<stream_id>/watch', methods=['POST'])
+@token_required
+def watch_stream(current_user, stream_id):
+    action = request.get_json().get('action', 'start')
+    session_key = (current_user['id'], stream_id)
+    if action == 'start':
+        analytics['watch_sessions'][session_key] = datetime.now()
+        return jsonify({'success': True})
+    elif action == 'stop':
+        start = analytics['watch_sessions'].pop(session_key, None)
+        duration = 0
+        if start:
+            duration = (datetime.now() - start).total_seconds()
+            analytics['view_time'][stream_id] = analytics['view_time'].get(stream_id, 0) + duration
+        return jsonify({'success': True, 'duration': duration})
+    else:
+        return jsonify({'success': False, 'error': {'message': 'Invalid action'}}), 400
+
 @app.route('/api/streams/<stream_id>/update', methods=['PUT'])
 @token_required
 def update_stream(current_user, stream_id):
@@ -405,11 +460,50 @@ def update_stream(current_user, stream_id):
         stream['category'] = data['category']
     if 'isPrivate' in data:
         stream['isPrivate'] = data['isPrivate']
-    
+
     return jsonify({
         'success': True,
         'data': stream
     })
+
+# Ranking and trending endpoints
+@app.route('/api/streams/ranking', methods=['GET'])
+def streams_ranking():
+    limit = int(request.args.get('limit', 10))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    ranked = sorted(live_streams, key=lambda s: s.get('viewerCount', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': ranked}})
+
+@app.route('/api/streams/trending', methods=['GET'])
+def streams_trending():
+    limit = int(request.args.get('limit', 10))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    for s in live_streams:
+        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
+    trending = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': trending}})
+
+@app.route('/api/streams/categories', methods=['GET'])
+def stream_categories():
+    categories = {}
+    for s in streams.values():
+        if s['isLive']:
+            categories[s['category']] = categories.get(s['category'], 0) + 1
+    category_list = [{'name': k, 'count': v} for k, v in categories.items()]
+    return jsonify({'success': True, 'data': {'categories': category_list}})
+
+@app.route('/api/streams/recommendations', methods=['GET'])
+@token_required
+def stream_recommendations(current_user):
+    limit = int(request.args.get('limit', 5))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    for s in live_streams:
+        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
+    preferred = current_user.get('preferredCategories') or []
+    if preferred:
+        live_streams = [s for s in live_streams if s['category'] in preferred]
+    recommended = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': recommended}})
 
 # Gifts routes
 @app.route('/api/gifts', methods=['GET'])
@@ -436,10 +530,21 @@ def send_gift(current_user):
     recipient = next((u for u in users.values() if u['id'] == recipient_id), None)
     if not recipient:
         return jsonify({'success': False, 'error': {'message': 'Recipient not found'}}), 404
-    
+
+    # Deduct coins from sender
     current_user['walletBalance'] -= gift['costCoins']
+    # Give 70% to recipient (streamer)
     recipient['walletBalance'] += int(gift['costCoins'] * 0.7)
     
+    # Update stream gift count if recipient is currently streaming
+    stream = next((s for s in streams.values() if s['streamerId'] == recipient_id and s['isLive']), None)
+    if stream:
+        stream['giftCount'] = stream.get('giftCount', 0) + 1
+    
+    # Update analytics
+    analytics['gifts_sent'] += 1
+    analytics['revenue'] += gift['costCoins']
+
     return jsonify({
         'success': True,
         'data': {
@@ -478,6 +583,7 @@ def purchase_coins(current_user):
     
     coins = packages[package]['coins']
     current_user['walletBalance'] += coins
+    analytics['revenue'] += packages[package]['price']
     
     return jsonify({
         'success': True,
@@ -486,6 +592,63 @@ def purchase_coins(current_user):
             'newBalance': current_user['walletBalance'],
             'transactionId': str(uuid.uuid4())
         }
+    })
+
+# Image upload with automatic compression for mobile optimization
+@app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': {'message': 'Image missing'}}), 400
+
+    file = request.files['image']
+    try:
+        img = Image.open(file.stream)
+    except Exception:
+        return jsonify({'success': False, 'error': {'message': 'Invalid image'}}), 400
+
+    # Compress image for mobile optimization
+    img_io = BytesIO()
+    img.convert('RGB').save(img_io, 'JPEG', quality=70, optimize=True)
+    img_io.seek(0)
+
+    # Save to uploads directory
+    uploads_dir = os.path.join('backend', 'static', 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+    filename = f"{uuid.uuid4()}.jpg"
+    filepath = os.path.join(uploads_dir, filename)
+    with open(filepath, 'wb') as f:
+        f.write(img_io.read())
+
+    return jsonify({'success': True, 'data': {'url': f'/static/uploads/{filename}'}})
+
+# User preferences and theme routes
+@app.route('/api/users/preferences', methods=['PUT'])
+@token_required
+def update_preferences(current_user):
+    data = request.get_json()
+    categories = data.get('categories', [])
+    if not isinstance(categories, list):
+        return jsonify({'success': False, 'error': {'message': 'Categories must be a list'}}), 400
+    current_user['preferredCategories'] = categories
+    return jsonify({'success': True, 'data': {'preferredCategories': categories}})
+
+@app.route('/api/users/<user_id>', methods=['PUT'])
+@token_required
+def update_user(current_user, user_id):
+    if current_user['id'] != user_id:
+        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
+    
+    data = request.get_json()
+    
+    # Update allowed fields
+    updatable_fields = ['displayName', 'avatarUrl', 'theme', 'accentColor', 'specialTheme']
+    for field in updatable_fields:
+        if field in data:
+            current_user[field] = data[field]
+    
+    return jsonify({
+        'success': True,
+        'data': {k: v for k, v in current_user.items() if k != 'passwordHash'}
     })
 
 # Users routes
@@ -500,22 +663,6 @@ def get_user(user_id):
         'data': {k: v for k, v in user.items() if k != 'passwordHash'}
     })
 
-@app.route('/api/users/<user_id>', methods=['PUT'])
-@token_required
-def update_user_route(current_user, user_id):
-    if current_user['id'] != user_id:
-        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
-
-    data = request.get_json()
-    for field in ['displayName', 'avatarUrl', 'theme', 'accentColor', 'specialTheme']:
-        if field in data:
-            current_user[field] = data[field]
-
-    return jsonify({
-        'success': True,
-        'data': {k: v for k, v in current_user.items() if k != 'passwordHash'}
-    })
-
 # Health check
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -527,9 +674,59 @@ def health_check():
         'streams': len([s for s in streams.values() if s['isLive']])
     })
 
+# Analytics endpoint
+@app.route('/api/analytics', methods=['GET'])
+def get_analytics():
+    total_users = analytics['registrations'] + len(demo_users)
+    returning = len([u for u, logs in analytics['logins'].items() if len(logs) > 1])
+    retention = returning / total_users if total_users else 0
+    conversion = analytics['registrations'] / analytics['visitor_count'] if analytics['visitor_count'] else 0
+    return jsonify({
+        'success': True,
+        'data': {
+            'view_time': analytics['view_time'],
+            'retention_rate': retention,
+            'conversion_rate': conversion,
+            'gifts_sent': analytics['gifts_sent'],
+            'revenue': analytics['revenue']
+        }
+    })
+
+# SEO and sharing routes
+@app.route('/streams/<stream_id>')
+def share_stream(stream_id):
+    """Public sharing page for streams with SEO meta tags"""
+    stream = streams.get(stream_id)
+    if not stream:
+        abort(404)
+
+    url = request.url
+    return render_template('share.html', stream=stream, url=url)
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """Generate sitemap for SEO optimization"""
+    pages = [url_for('index', _external=True)]
+    
+    # Add all public stream pages to sitemap
+    for stream in streams.values():
+        if not stream.get('isPrivate', False):  # Only include public streams
+            pages.append(url_for('share_stream', stream_id=stream['id'], _external=True))
+
+    xml_items = '\n'.join(f'<url><loc>{p}</loc></url>' for p in pages)
+    xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{xml_items}
+</urlset>'''
+
+    response = make_response(xml)
+    response.headers['Content-Type'] = 'application/xml'
+    return response
+
 # Root endpoint
 @app.route('/')
 def index():
+    analytics['visitor_count'] += 1
     return jsonify({
         'message': 'LiveHot.app Backend API',
         'version': '1.0.0',
@@ -539,7 +736,9 @@ def index():
             'gifts': '/api/gifts',
             'wallet': '/api/wallet',
             'users': '/api/users/*',
-            'health': '/api/health'
+            'health': '/api/health',
+            'analytics': '/api/analytics',
+            'sitemap': '/sitemap.xml'
         },
         'demo_credentials': {
             'streamer': {'email': 'demo@livehot.app', 'password': 'password123'},
@@ -550,4 +749,3 @@ def index():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
