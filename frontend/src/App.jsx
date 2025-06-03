@@ -1,12 +1,17 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-import Home from './pages/Home';
+import VideoPlayer from './components/VideoPlayer';
+import ChatBox from './components/chat/ChatBox';
+import GiftButton from './components/gifts/GiftButton';
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-    </Routes>
+    <div className="min-h-screen flex flex-col">
+      <VideoPlayer />
+      <ChatBox />
+      <div className="p-4">
+        <GiftButton />
+      </div>
+    </div>
   );
 }
 
