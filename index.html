@@ -51,6 +51,16 @@
             height: 100vh;
             position: relative;
             scroll-snap-align: start;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide img,
+        .slide video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .actions {
@@ -137,6 +147,12 @@
             <div class="animate-pulse text-2xl mb-4">🔥 LiveHot</div>
             <div class="text-slate-400">Carregando...</div>
         </div>
+    </div>
+
+    <!-- Player Modal -->
+    <div id="player-modal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden z-50" role="dialog" aria-modal="true">
+        <button id="player-close" class="absolute top-4 right-4 text-white text-2xl" aria-label="Fechar">✖</button>
+        <video id="player-video" class="w-full h-full max-h-screen" autoplay playsinline controls></video>
     </div>
 
     <!-- Login Modal -->
