@@ -89,8 +89,8 @@ docker-compose up --build
 ```
 
 O `docker-compose` já define a variável `API_BASE_URL` do frontend para
-`http://backend:5000/api`, permitindo que o navegador acesse a API
-internamente no ambiente Docker.
+`http://localhost:5000/api`, permitindo que o navegador acesse a API
+do próprio host enquanto os serviços rodam em contêineres.
 
 2. **Frontend disponível em:** `http://localhost:8000`
 3. **Backend disponível em:** `http://localhost:5000`
