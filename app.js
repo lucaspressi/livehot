@@ -1,504 +1,694 @@
-// API Configuration
-const API_BASE_URL = window.API_BASE_URL || '/api';
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from backend.routes.user import user_bp
+import os
+from dotenv import load_dotenv
+import json
+import uuid
+from io import BytesIO
+from datetime import datetime, timedelta
+import hashlib
+import base64
+import hmac
+from functools import wraps
+import jwt
+from PIL import Image
 
-// Global state
-let currentUser = null;
-let currentStream = null;
-let loginTimeout;
+load_dotenv()
 
-let cameraEnabled = false;
-let micEnabled = false;
-let livekitRoom = null;
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'livehot-secret-key-change-in-production')
 
-// API Service
-const api = {
-    async request(endpoint, options = {}) {
-        const token = localStorage.getItem('token');
-        const headers = {
-            'Content-Type': 'application/json',
-            ...(token && { Authorization: `Bearer ${token}` }),
-            ...options.headers,
-        };
+# LiveKit configuration for scalable streaming
+LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'wss://livekit.example.com')
+LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
+LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')
 
-        try {
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                ...options,
-                headers,
-            });
+# Enable CORS for all routes with specific configuration
+CORS(app,
+     origins=['*'],
+     allow_headers=['Content-Type', 'Authorization'],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+     supports_credentials=True)
 
-            const data = await response.json();
+# Register user routes
+app.register_blueprint(user_bp, url_prefix='/api')
+
+# Simple JWT implementation
+def create_token(payload, secret, expiry_hours=168):
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload['exp'] = int((datetime.utcnow() + timedelta(hours=expiry_hours)).timestamp())
+    
+    header_encoded = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip('=')
+    payload_encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip('=')
+    
+    message = f"{header_encoded}.{payload_encoded}"
+    signature = base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), message.encode(), hashlib.sha256).digest()
+    ).decode().rstrip('=')
+    
+    return f"{message}.{signature}"
+
+def verify_token(token, secret):
+    try:
+        parts = token.split('.')
+        if len(parts) != 3:
+            return None
             
-            if (!response.ok) {
-                throw new Error(data.error?.message || 'Request failed');
+        header_encoded, payload_encoded, signature = parts
+        
+        message = f"{header_encoded}.{payload_encoded}"
+        expected_signature = base64.urlsafe_b64encode(
+            hmac.new(secret.encode(), message.encode(), hashlib.sha256).digest()
+        ).decode().rstrip('=')
+        
+        if signature != expected_signature:
+            return None
+        
+        payload_padded = payload_encoded + '=' * (4 - len(payload_encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_padded))
+        
+        if payload.get('exp', 0) < int(datetime.utcnow().timestamp()):
+            return None
+            
+        return payload
+    except:
+        return None
+
+# Generate LiveKit token for publishing or viewing
+def generate_livekit_token(room, identity, name, can_publish=False, ttl_seconds=3600):
+    now = datetime.utcnow()
+    payload = {
+        'iss': LIVEKIT_API_KEY,
+        'sub': identity,
+        'name': name,
+        'nbf': int(now.timestamp()),
+        'exp': int((now + timedelta(seconds=ttl_seconds)).timestamp()),
+        'video': {
+            'roomJoin': True,
+            'room': room,
+            'canPublish': can_publish,
+            'canSubscribe': True
+        }
+    }
+    return jwt.encode(payload, LIVEKIT_API_SECRET, algorithm='HS256')
+
+# In-memory storage
+users = {}
+streams = {}
+analytics = {
+    'view_time': {},       # total seconds watched per stream
+    'watch_sessions': {},  # (user_id, stream_id) -> start_time
+    'visitor_count': 0,
+    'registrations': 0,
+    'logins': {},          # user_id -> [timestamps]
+    'gifts_sent': 0,
+    'revenue': 0.0
+}
+gifts = [
+    {"id": "1", "name": "Heart", "emoji": "❤️", "costCoins": 10, "rarity": "COMMON"},
+    {"id": "2", "name": "Rose", "emoji": "🌹", "costCoins": 25, "rarity": "UNCOMMON"},
+    {"id": "3", "name": "Diamond", "emoji": "💎", "costCoins": 100, "rarity": "RARE"},
+    {"id": "4", "name": "Crown", "emoji": "👑", "costCoins": 500, "rarity": "LEGENDARY"}
+]
+
+# Demo users
+demo_users = {
+    "demo@livehot.app": {
+        "id": "demo-user-1",
+        "email": "demo@livehot.app",
+        "username": "demo_streamer",
+        "displayName": "Demo Streamer",
+        "passwordHash": hashlib.sha256("password123".encode()).hexdigest(),
+        "isStreamer": True,
+        "isVerified": True,
+        "walletBalance": 1000,
+        "avatarUrl": "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
+        "createdAt": datetime.now().isoformat(),
+        "preferredCategories": []
+    },
+    "viewer@livehot.app": {
+        "id": "demo-user-2", 
+        "email": "viewer@livehot.app",
+        "username": "demo_viewer",
+        "displayName": "Demo Viewer",
+        "passwordHash": hashlib.sha256("password123".encode()).hexdigest(),
+        "isStreamer": False,
+        "isVerified": False,
+        "walletBalance": 500,
+        "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+        "createdAt": datetime.now().isoformat(),
+        "preferredCategories": []
+    }
+}
+
+users.update(demo_users)
+
+# Demo streams
+demo_streams = [
+    {
+        "id": "stream-1",
+        "title": "🔥 Hot Live Show - Come Chat!",
+        "description": "Interactive live streaming with chat and gifts",
+        "category": "Entertainment",
+        "isLive": True,
+        "isPrivate": False,
+        "viewerCount": 127,
+        "giftCount": 0,
+        "streamerId": "demo-user-1",
+        "streamer": demo_users["demo@livehot.app"],
+        "startedAt": datetime.now().isoformat(),
+        "thumbnailUrl": "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400&h=300&fit=crop"
+    }
+]
+
+streams.update({s["id"]: s for s in demo_streams})
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'success': False, 'error': {'message': 'Token is missing'}}), 401
+        
+        try:
+            if token.startswith('Bearer '):
+                token = token[7:]
+            data = verify_token(token, app.config['SECRET_KEY'])
+            if not data:
+                return jsonify({'success': False, 'error': {'message': 'Token is invalid'}}), 401
+            current_user = users.get(data['email'])
+            if not current_user:
+                return jsonify({'success': False, 'error': {'message': 'User not found'}}), 401
+        except:
+            return jsonify({'success': False, 'error': {'message': 'Token is invalid'}}), 401
+        
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+# Auth routes
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not email or not password:
+        return jsonify({'success': False, 'error': {'message': 'Email and password required'}}), 400
+    
+    user = users.get(email)
+    if not user or user['passwordHash'] != hashlib.sha256(password.encode()).hexdigest():
+        return jsonify({'success': False, 'error': {'message': 'Invalid credentials'}}), 401
+
+    token = create_token({'email': email}, app.config['SECRET_KEY'])
+
+    analytics['logins'].setdefault(user['id'], []).append(datetime.now())
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'token': token,
+            'user': {k: v for k, v in user.items() if k != 'passwordHash'}
+        }
+    })
+
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    username = data.get('username')
+    displayName = data.get('displayName')
+    
+    if not all([email, password, username, displayName]):
+        return jsonify({'success': False, 'error': {'message': 'All fields required'}}), 400
+    
+    if email in users:
+        return jsonify({'success': False, 'error': {'message': 'User already exists'}}), 400
+    
+    user_id = str(uuid.uuid4())
+    users[email] = {
+        'id': user_id,
+        'email': email,
+        'username': username,
+        'displayName': displayName,
+        'passwordHash': hashlib.sha256(password.encode()).hexdigest(),
+        'isStreamer': False,
+        'isVerified': False,
+        'walletBalance': 100,
+        'avatarUrl': f"https://ui-avatars.com/api/?name={displayName}&background=random",
+        'createdAt': datetime.now().isoformat(),
+        'preferredCategories': []
+    }
+
+    analytics['registrations'] += 1
+    analytics['logins'].setdefault(user_id, []).append(datetime.now())
+
+    token = create_token({'email': email}, app.config['SECRET_KEY'])
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'token': token,
+            'user': {k: v for k, v in users[email].items() if k != 'passwordHash'}
+        }
+    }), 201
+
+@app.route('/api/auth/me', methods=['GET'])
+@token_required
+def get_current_user(current_user):
+    return jsonify({
+        'success': True,
+        'data': {k: v for k, v in current_user.items() if k != 'passwordHash'}
+    })
+
+# Streams routes
+@app.route('/api/streams', methods=['GET'])
+def get_streams():
+    if not request.headers.get('Authorization'):
+        analytics['visitor_count'] += 1
+
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 20))
+    category = request.args.get('category')
+
+    token = request.headers.get('Authorization')
+    if token and token.startswith('Bearer '):
+        data = verify_token(token[7:], app.config['SECRET_KEY'])
+        if data:
+            current_user = users.get(data['email'])
+            if current_user is not None and category:
+                prefs = current_user.setdefault('preferredCategories', [])
+                if category not in prefs:
+                    prefs.append(category)
+
+    live_streams = [s for s in streams.values() if s['isLive']]
+    if category:
+        live_streams = [s for s in live_streams if s['category'].lower() == category.lower()]
+    total = len(live_streams)
+    
+    start = (page - 1) * limit
+    end = start + limit
+    paginated_streams = live_streams[start:end]
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'streams': paginated_streams,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'totalPages': (total + limit - 1) // limit
             }
-
-            return data;
-        } catch (error) {
-            console.error('API Error:', error);
-            throw error;
         }
-    },
+    })
 
-    // Auth
-    async login(email, password) {
-        return this.request('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email, password }),
-        });
-    },
+@app.route('/api/streams/<stream_id>', methods=['GET'])
+def get_stream(stream_id):
+    stream = streams.get(stream_id)
+    if not stream:
+        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
+    
+    return jsonify({
+        'success': True,
+        'data': stream
+    })
 
-    async getCurrentUser() {
-        return this.request('/auth/me');
-    },
-
-    // Streams
-    async getStreams(page = 1, limit = 20) {
-        return this.request(`/streams?page=${page}&limit=${limit}`);
-    },
-
-    async createStream(streamData) {
-        return this.request('/streams', {
-            method: 'POST',
-            body: JSON.stringify(streamData),
-        });
-    },
-
-    async startStream(streamId) {
-        return this.request(`/streams/${streamId}/start`, {
-            method: 'POST',
-        });
-    },
-
-    async startBroadcast(streamId) {
-        return this.request(`/broadcast/${streamId}`, {
-            method: 'POST',
-        });
-    },
-
-    // Wallet
-    async getWallet() {
-        return this.request('/wallet');
-    },
-
-    async purchaseCoins(packageType) {
-        return this.request('/wallet/purchase', {
-            method: 'POST',
-            body: JSON.stringify({ package: packageType }),
-        });
-    },
-};
-
-// Utility functions
-function showElement(id) {
-    document.getElementById(id).classList.remove('hidden');
-}
-
-function hideElement(id) {
-    document.getElementById(id).classList.add('hidden');
-}
-
-function showPage(pageId, streamId = null) {
-    // Hide all pages
-    document.querySelectorAll('.page').forEach(page => {
-        page.classList.add('hidden');
-    });
-
-    // Hide live broadcast UI when leaving broadcast page
-    if (pageId !== 'broadcast') {
-        hideElement('broadcast-session');
+@app.route('/api/streams', methods=['POST'])
+@token_required
+def create_stream(current_user):
+    if not current_user['isStreamer']:
+        return jsonify({'success': False, 'error': {'message': 'Only streamers can create streams'}}), 403
+    
+    data = request.get_json()
+    stream_id = str(uuid.uuid4())
+    
+    stream = {
+        'id': stream_id,
+        'title': data.get('title', 'Untitled Stream'),
+        'description': data.get('description', ''),
+        'category': data.get('category', 'Entertainment'),
+        'isLive': False,
+        'isPrivate': data.get('isPrivate', False),
+        'viewerCount': 0,
+        'giftCount': 0,
+        'streamerId': current_user['id'],
+        'streamer': {k: v for k, v in current_user.items() if k != 'passwordHash'},
+        'startedAt': datetime.now().isoformat(),
+        'livekitRoomName': f"room_{stream_id}",
+        'livekitToken': f"demo_token_{stream_id}"
     }
     
-    // Show selected page
-    showElement(`${pageId}-page`);
+    streams[stream_id] = stream
     
-    // Update navigation
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('text-white');
-        btn.classList.add('text-slate-400');
-    });
-    
-    // Load page content
-    switch(pageId) {
-        case 'home':
-            loadStreams(streamId);
-            break;
-        case 'wallet':
-            loadWallet();
-            break;
-        case 'broadcast':
-            if (!currentUser?.isStreamer) {
-                showPage('home');
-                alert('Apenas streamers podem acessar esta página');
-                return;
-            }
-            if (livekitRoom) {
-                showElement('broadcast-session');
-            }
-            break;
-    }
-}
+    return jsonify({
+        'success': True,
+        'data': stream
+    }), 201
 
-function showNotification(message, type = 'info') {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg text-white max-w-sm ${
-        type === 'error' ? 'bg-red-600' : 
-        type === 'success' ? 'bg-green-600' : 
-        'bg-blue-600'
-    }`;
-    notification.textContent = message;
+@app.route('/api/streams/<stream_id>/start', methods=['POST'])
+@token_required
+def start_stream(current_user, stream_id):
+    stream = streams.get(stream_id)
+    if not stream:
+        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
     
-    document.body.appendChild(notification);
+    if stream['streamerId'] != current_user['id']:
+        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
     
-    // Remove after 3 seconds
-    setTimeout(() => {
-        notification.remove();
-    }, 3000);
-}
+    stream['isLive'] = True
+    stream['startedAt'] = datetime.now().isoformat()
+    
+    return jsonify({
+        'success': True,
+        'data': stream
+    })
 
-// Auth functions
-async function checkAuth() {
-    const token = localStorage.getItem('token');
-    if (token) {
-        try {
-            const response = await api.getCurrentUser();
-            currentUser = response.data;
-            updateAuthUI();
-            return true;
-        } catch (error) {
-            localStorage.removeItem('token');
-            currentUser = null;
+@app.route('/api/streams/<stream_id>/stop', methods=['POST'])
+@token_required
+def stop_stream(current_user, stream_id):
+    stream = streams.get(stream_id)
+    if not stream:
+        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
+    
+    if stream['streamerId'] != current_user['id']:
+        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
+    
+    stream['isLive'] = False
+    stream['endedAt'] = datetime.now().isoformat()
+
+    return jsonify({
+        'success': True,
+        'data': stream
+    })
+
+# Broadcast route - generates LiveKit token and returns connection info
+@app.route('/api/broadcast/<stream_id>', methods=['POST'])
+@token_required
+def broadcast_stream(current_user, stream_id):
+    stream = streams.get(stream_id)
+    if not stream:
+        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
+
+    is_owner = stream['streamerId'] == current_user['id']
+    if is_owner and not stream['isLive']:
+        stream['isLive'] = True
+        stream['startedAt'] = datetime.now().isoformat()
+
+    token = generate_livekit_token(
+        stream['livekitRoomName'],
+        identity=current_user['id'],
+        name=current_user['displayName'],
+        can_publish=is_owner
+    )
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'url': LIVEKIT_URL,
+            'room': stream['livekitRoomName'],
+            'token': token,
+            'stream': stream
         }
-    }
-    updateAuthUI();
-    return false;
-}
+    })
 
-function updateAuthUI() {
-    const authNav = document.getElementById('auth-nav');
-    const authText = document.getElementById('auth-text');
-    const broadcastNav = document.getElementById('broadcast-nav');
+
+@app.route('/api/streams/<stream_id>/watch', methods=['POST'])
+@token_required
+def watch_stream(current_user, stream_id):
+    action = request.get_json().get('action', 'start')
+    session_key = (current_user['id'], stream_id)
+    if action == 'start':
+        analytics['watch_sessions'][session_key] = datetime.now()
+        return jsonify({'success': True})
+    elif action == 'stop':
+        start = analytics['watch_sessions'].pop(session_key, None)
+        duration = 0
+        if start:
+            duration = (datetime.now() - start).total_seconds()
+            analytics['view_time'][stream_id] = analytics['view_time'].get(stream_id, 0) + duration
+        return jsonify({'success': True, 'duration': duration})
+    else:
+        return jsonify({'success': False, 'error': {'message': 'Invalid action'}}), 400
+
+@app.route('/api/streams/<stream_id>/update', methods=['PUT'])
+@token_required
+def update_stream(current_user, stream_id):
+    stream = streams.get(stream_id)
+    if not stream:
+        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
     
-    if (currentUser) {
-        authText.textContent = 'Sair';
-        if (currentUser.isStreamer) {
-            broadcastNav.classList.remove('hidden');
+    if stream['streamerId'] != current_user['id']:
+        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
+    
+    data = request.get_json()
+    
+    if 'title' in data:
+        stream['title'] = data['title']
+    if 'description' in data:
+        stream['description'] = data['description']
+    if 'category' in data:
+        stream['category'] = data['category']
+    if 'isPrivate' in data:
+        stream['isPrivate'] = data['isPrivate']
+
+    return jsonify({
+        'success': True,
+        'data': stream
+    })
+
+# Ranking and trending endpoints
+@app.route('/api/streams/ranking', methods=['GET'])
+def streams_ranking():
+    limit = int(request.args.get('limit', 10))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    ranked = sorted(live_streams, key=lambda s: s.get('viewerCount', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': ranked}})
+
+
+@app.route('/api/streams/trending', methods=['GET'])
+def streams_trending():
+    limit = int(request.args.get('limit', 10))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    for s in live_streams:
+        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
+    trending = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': trending}})
+
+
+@app.route('/api/streams/categories', methods=['GET'])
+def stream_categories():
+    categories = {}
+    for s in streams.values():
+        if s['isLive']:
+            categories[s['category']] = categories.get(s['category'], 0) + 1
+    category_list = [{'name': k, 'count': v} for k, v in categories.items()]
+    return jsonify({'success': True, 'data': {'categories': category_list}})
+
+
+@app.route('/api/streams/recommendations', methods=['GET'])
+@token_required
+def stream_recommendations(current_user):
+    limit = int(request.args.get('limit', 5))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    for s in live_streams:
+        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
+    preferred = current_user.get('preferredCategories') or []
+    if preferred:
+        live_streams = [s for s in live_streams if s['category'] in preferred]
+    recommended = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': recommended}})
+
+# Gifts routes
+@app.route('/api/gifts', methods=['GET'])
+def get_gifts():
+    return jsonify({
+        'success': True,
+        'data': {'gifts': gifts}
+    })
+
+@app.route('/api/gifts/send', methods=['POST'])
+@token_required
+def send_gift(current_user):
+    data = request.get_json()
+    gift_id = data.get('giftId')
+    recipient_id = data.get('recipientId')
+    
+    gift = next((g for g in gifts if g['id'] == gift_id), None)
+    if not gift:
+        return jsonify({'success': False, 'error': {'message': 'Gift not found'}}), 404
+    
+    if current_user['walletBalance'] < gift['costCoins']:
+        return jsonify({'success': False, 'error': {'message': 'Insufficient balance'}}), 400
+    
+    recipient = next((u for u in users.values() if u['id'] == recipient_id), None)
+    if not recipient:
+        return jsonify({'success': False, 'error': {'message': 'Recipient not found'}}), 404
+
+    # Deduct coins from sender
+    current_user['walletBalance'] -= gift['costCoins']
+    # Give 70% to recipient (streamer)
+    recipient['walletBalance'] += int(gift['costCoins'] * 0.7)
+    
+    # Update stream gift count if recipient is currently streaming
+    stream = next((s for s in streams.values() if s['streamerId'] == recipient_id and s['isLive']), None)
+    if stream:
+        stream['giftCount'] = stream.get('giftCount', 0) + 1
+    
+    # Update analytics
+    analytics['gifts_sent'] += 1
+    analytics['revenue'] += gift['costCoins']
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'gift': gift,
+            'recipient': {k: v for k, v in recipient.items() if k != 'passwordHash'},
+            'newBalance': current_user['walletBalance']
         }
-    } else {
-        authText.textContent = 'Login';
-        broadcastNav.classList.add('hidden');
-    }
-}
+    })
 
-function toggleAuth() {
-    if (currentUser) {
-        logout();
-    } else {
-        showPage('login');
-    }
-}
-
-function logout() {
-    localStorage.removeItem('token');
-    currentUser = null;
-    updateAuthUI();
-    showPage('home');
-    showNotification('Logout realizado com sucesso!', 'success');
-    startLoginTimer();
-
-}
-
-function fillDemoCredentials(type) {
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    
-    if (type === 'streamer') {
-        emailInput.value = 'demo@livehot.app';
-        passwordInput.value = 'password123';
-    } else {
-        emailInput.value = 'viewer@livehot.app';
-        passwordInput.value = 'password123';
-    }
-
-function startLoginTimer(minutes = 10) {
-    if (currentUser) return;
-    clearTimeout(loginTimeout);
-    loginTimeout = setTimeout(showLoginModal, minutes * 60 * 1000);
-}
-
-function showLoginModal() {
-    showElement("login-modal");
-}
-
-function cancelLoginTimer() {
-    clearTimeout(loginTimeout);
-    hideElement("login-modal");
-}
-
-}
-
-// Stream functions
-async function loadStreams(highlightId = null) {
-    const container = document.getElementById('feed');
-    try {
-        container.innerHTML = `<div class="text-center text-slate-400 py-12">Carregando streams...</div>`;
-        const response = await api.getStreams();
-        const streams = response.data.streams;
-        if (streams.length === 0) {
-            container.innerHTML = `<div class="text-center text-slate-400 py-12">Nenhuma stream ativa no momento</div>`;
-            return;
+# Wallet routes
+@app.route('/api/wallet', methods=['GET'])
+@token_required
+def get_wallet(current_user):
+    return jsonify({
+        'success': True,
+        'data': {
+            'balance': current_user['walletBalance'],
+            'transactions': []
         }
-        container.innerHTML = streams.map(stream => `
-            <div class="slide" data-stream-id="${stream.id}">
-                <img src="${stream.thumbnailUrl}" alt="${stream.title}" class="w-full h-full object-cover" onerror="this.src='${stream.thumbnailUrl}'" />
-                <div class="absolute bottom-0 left-0 p-4 text-white bg-black/50 w-full">
-                    <div class="font-bold">${stream.streamer.displayName}</div>
-                    <div class="text-sm">${stream.title}</div>
-                </div>
-                <div class="actions">
-                    <button>❤️</button>
-                    <button>🎁</button>
-                    <button onclick="shareStream('${stream.id}')">🔗</button>
-                    <button>➕</button>
-                </div>
-                <div class="chat"></div>
-            </div>
-        `).join('');
-        if (highlightId) {
-            const slide = container.querySelector(`[data-stream-id="${highlightId}"]`);
-            if (slide) {
-                slide.scrollIntoView({behavior: 'smooth'});
-            }
+    })
+
+@app.route('/api/wallet/purchase', methods=['POST'])
+@token_required
+def purchase_coins(current_user):
+    data = request.get_json()
+    package = data.get('package', 'basic')
+    
+    packages = {
+        'basic': {'coins': 100, 'price': 9.99},
+        'premium': {'coins': 500, 'price': 39.99},
+        'vip': {'coins': 1000, 'price': 69.99}
+    }
+    
+    if package not in packages:
+        return jsonify({'success': False, 'error': {'message': 'Invalid package'}}), 400
+    
+    coins = packages[package]['coins']
+    current_user['walletBalance'] += coins
+    analytics['revenue'] += packages[package]['price']
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'coins': coins,
+            'newBalance': current_user['walletBalance'],
+            'transactionId': str(uuid.uuid4())
         }
-    } catch (error) {
-        container.innerHTML = `
-            <div class="text-center text-red-400 py-12">
-                <div class="text-4xl mb-4">❌</div>
-                <p>Erro ao carregar streams: ${error.message}</p>
-                <button onclick="loadStreams()" class="mt-4 bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded">
-                    Tentar Novamente
-                </button>
-            </div>
-        `;
-    }
-}
+    })
 
-function shareStream(id) {
-    const url = `${window.location.origin}/streams/${id}`;
-    navigator.clipboard.writeText(url).then(() => {
-        showNotification('Link copiado para a área de transferência!', 'success');
-    }).catch(() => {
-        window.open(url, '_blank');
-    });
-}
+# Image upload with automatic compression for mobile optimization
+@app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': {'message': 'Image missing'}}), 400
 
-// Wallet functions
-async function loadWallet() {
-    const balanceElement = document.getElementById('wallet-balance');
+    file = request.files['image']
+    try:
+        img = Image.open(file.stream)
+    except Exception:
+        return jsonify({'success': False, 'error': {'message': 'Invalid image'}}), 400
+
+    # Compress image for mobile optimization
+    img_io = BytesIO()
+    img.convert('RGB').save(img_io, 'JPEG', quality=70, optimize=True)
+    img_io.seek(0)
+
+    # Save to uploads directory
+    uploads_dir = os.path.join('backend', 'static', 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+    filename = f"{uuid.uuid4()}.jpg"
+    filepath = os.path.join(uploads_dir, filename)
+    with open(filepath, 'wb') as f:
+        f.write(img_io.read())
+
+    return jsonify({'success': True, 'data': {'url': f'/static/uploads/{filename}'}})
+
+# User preferences routes
+@app.route('/api/users/preferences', methods=['PUT'])
+@token_required
+def update_preferences(current_user):
+    data = request.get_json()
+    categories = data.get('categories', [])
+    if not isinstance(categories, list):
+        return jsonify({'success': False, 'error': {'message': 'Categories must be a list'}}), 400
+    current_user['preferredCategories'] = categories
+    return jsonify({'success': True, 'data': {'preferredCategories': categories}})
+
+# Users routes
+@app.route('/api/users/<user_id>', methods=['GET'])
+def get_user(user_id):
+    user = next((u for u in users.values() if u['id'] == user_id), None)
+    if not user:
+        return jsonify({'success': False, 'error': {'message': 'User not found'}}), 404
     
-    if (currentUser) {
-        balanceElement.textContent = `${currentUser.walletBalance || 0} moedas`;
-    } else {
-        balanceElement.textContent = '0 moedas';
-    }
-}
+    return jsonify({
+        'success': True,
+        'data': {k: v for k, v in user.items() if k != 'passwordHash'}
+    })
 
-async function purchaseCoins(packageType) {
-    if (!currentUser) {
-        showNotification('Faça login para comprar moedas', 'error');
-        return;
-    }
-    
-    try {
-        const response = await api.purchaseCoins(packageType);
-        currentUser.walletBalance = response.data.newBalance;
-        loadWallet();
-        showNotification(`${response.data.coins} moedas adicionadas com sucesso!`, 'success');
-    } catch (error) {
-        showNotification('Erro ao comprar moedas: ' + error.message, 'error');
-    }
-}
+# Health check
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'ok',
+        'timestamp': datetime.now().isoformat(),
+        'version': '1.0.0',
+        'users': len(users),
+        'streams': len([s for s in streams.values() if s['isLive']])
+    })
 
-// Broadcast functions
-function toggleCamera() {
-    cameraEnabled = !cameraEnabled;
-    const btn = document.getElementById('camera-btn');
-    
-    if (cameraEnabled) {
-        btn.textContent = '📹 Câmera Ligada';
-        btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-green-600 hover:bg-green-700 text-white';
-        
-        // Try to access camera
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(stream => {
-                    console.log('Camera access granted:', stream);
-                    showNotification('Câmera ativada com sucesso!', 'success');
-                })
-                .catch(err => {
-                    console.log('Camera access denied:', err);
-                    showNotification('Acesso à câmera negado ou não disponível', 'error');
-                    cameraEnabled = false;
-                    btn.textContent = '📹 Câmera Desligada';
-                    btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white';
-                });
+
+@app.route('/api/analytics', methods=['GET'])
+def get_analytics():
+    total_users = analytics['registrations'] + len(demo_users)
+    returning = len([u for u, logs in analytics['logins'].items() if len(logs) > 1])
+    retention = returning / total_users if total_users else 0
+    conversion = analytics['registrations'] / analytics['visitor_count'] if analytics['visitor_count'] else 0
+    return jsonify({
+        'success': True,
+        'data': {
+            'view_time': analytics['view_time'],
+            'retention_rate': retention,
+            'conversion_rate': conversion,
+            'gifts_sent': analytics['gifts_sent'],
+            'revenue': analytics['revenue']
         }
-    } else {
-        btn.textContent = '📹 Câmera Desligada';
-        btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white';
-    }
-}
+    })
 
-function toggleMic() {
-    micEnabled = !micEnabled;
-    const btn = document.getElementById('mic-btn');
-    
-    if (micEnabled) {
-        btn.textContent = '🎤 Microfone Ligado';
-        btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-green-600 hover:bg-green-700 text-white';
-    } else {
-        btn.textContent = '🎤 Microfone Desligado';
-        btn.className = 'flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white';
-    }
-}
-
-async function startStreamBroadcast() {
-    if (!currentStream) {
-        showNotification('Nenhuma stream criada', 'error');
-        return;
-    }
-
-    try {
-        const response = await api.startBroadcast(currentStream.id);
-        const { url, token } = response.data;
-
-        if (window.livekitClient) {
-            const { connect, createLocalTracks } = window.livekitClient;
-            livekitRoom = await connect(url, token);
-            const tracks = await createLocalTracks({
-                audio: micEnabled,
-                video: cameraEnabled,
-            });
-            tracks.forEach(track => {
-                livekitRoom.localParticipant.publishTrack(track);
-                if (track.kind === 'video') {
-                    track.attach(document.getElementById('broadcast-video'));
-                }
-            });
+# Root endpoint
+@app.route('/')
+def index():
+    analytics['visitor_count'] += 1
+    return jsonify({
+        'message': 'LiveHot.app Backend API',
+        'version': '1.0.0',
+        'endpoints': {
+            'auth': '/api/auth/*',
+            'streams': '/api/streams',
+            'gifts': '/api/gifts',
+            'wallet': '/api/wallet',
+            'users': '/api/users/*',
+            'health': '/api/health'
+        },
+        'demo_credentials': {
+            'streamer': {'email': 'demo@livehot.app', 'password': 'password123'},
+            'viewer': {'email': 'viewer@livehot.app', 'password': 'password123'}
         }
+    })
 
-        showNotification('Stream iniciada com sucesso!', 'success');
-        showElement('broadcast-session');
-    } catch (error) {
-        showNotification('Erro ao iniciar stream: ' + error.message, 'error');
-    }
-}
-
-// Event listeners
-document.addEventListener('DOMContentLoaded', async function() {
-    // Initialize app
-    await checkAuth();
-    
-    // Show navigation and hide loading
-    hideElement('loading');
-    showElement('app');
-    showElement('navigation');
-    
-    const params = new URLSearchParams(window.location.search);
-    const streamParam = params.get('stream');
-
-    // Show home page by default, highlighting stream if provided
-    showPage('home', streamParam);
-    
-    startLoginTimer();
-    document.getElementById("login-modal-login").addEventListener("click", () => { cancelLoginTimer(); showPage("login"); });
-    document.getElementById("login-modal-continue").addEventListener("click", () => { cancelLoginTimer(); startLoginTimer(5); });
-    const feed = document.getElementById("feed");
-    let touchStartY = 0;
-    feed.addEventListener("touchstart", e => { touchStartY = e.touches[0].clientY; });
-    feed.addEventListener("touchend", e => { const diff = e.changedTouches[0].clientY - touchStartY; if (diff > 50) { feed.scrollBy({top: -window.innerHeight, behavior: "smooth"}); } else if (diff < -50) { feed.scrollBy({top: window.innerHeight, behavior: "smooth"}); } });
-
-    // Login form
-    document.getElementById('login-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
-        const errorElement = document.getElementById('login-error');
-        
-        try {
-            const response = await api.login(email, password);
-            localStorage.setItem('token', response.data.token);
-            currentUser = response.data.user;
-            updateAuthUI();
-            cancelLoginTimer();
-
-            showPage('home');
-            showNotification('Login realizado com sucesso!', 'success');
-            
-            // Clear form
-            document.getElementById('email').value = '';
-            document.getElementById('password').value = '';
-            errorElement.classList.add('hidden');
-            
-        } catch (error) {
-            errorElement.textContent = error.message;
-            errorElement.classList.remove('hidden');
-        }
-    });
-    
-    // Stream form
-    document.getElementById('stream-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const title = document.getElementById('stream-title').value;
-        const description = document.getElementById('stream-description').value;
-        const category = document.getElementById('stream-category').value;
-        const isPrivate = document.getElementById('stream-private').checked;
-        
-        if (!title.trim()) {
-            showNotification('Título é obrigatório', 'error');
-            return;
-        }
-        
-        try {
-            const response = await api.createStream({
-                title,
-                description,
-                category,
-                isPrivate,
-            });
-            
-            currentStream = response.data;
-            
-            // Show stream info
-            document.getElementById('stream-info').innerHTML = `
-                <p><strong>Título:</strong> ${currentStream.title}</p>
-                <p><strong>ID:</strong> ${currentStream.id}</p>
-                <p><strong>Status:</strong> ${currentStream.isLive ? 'Ao Vivo' : 'Aguardando'}</p>
-            `;
-            
-            // Hide form and show controls
-            hideElement('stream-form-container');
-            showElement('stream-controls');
-            
-            showNotification('Stream criada com sucesso!', 'success');
-            
-        } catch (error) {
-            showNotification('Erro ao criar stream: ' + error.message, 'error');
-        }
-    });
-    
-    // Media controls
-    document.getElementById('camera-btn').addEventListener('click', toggleCamera);
-    document.getElementById('mic-btn').addEventListener('click', toggleMic);
-    document.getElementById('start-stream-btn').addEventListener('click', startStreamBroadcast);
-});
-
-// Make functions global for onclick handlers
-window.showPage = showPage;
-window.fillDemoCredentials = fillDemoCredentials;
-window.toggleAuth = toggleAuth;
-window.purchaseCoins = purchaseCoins;
-window.shareStream = shareStream;
-
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
