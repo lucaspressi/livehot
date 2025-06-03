@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>{{ stream.title }} - LiveHot</title>
+    <meta name="description" content="{{ stream.description }}">
+    <meta property="og:title" content="{{ stream.title }}">
+    <meta property="og:description" content="{{ stream.description }}">
+    <meta property="og:type" content="video.other">
+    <meta property="og:url" content="{{ url }}">
+    {% if stream.thumbnailUrl %}
+    <meta property="og:image" content="{{ stream.thumbnailUrl }}">
+    {% endif %}
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="{{ stream.title }}">
+    <meta property="twitter:description" content="{{ stream.description }}">
+    {% if stream.thumbnailUrl %}
+    <meta property="twitter:image" content="{{ stream.thumbnailUrl }}">
+    {% endif %}
+    <script>
+        // Redirect to frontend with deep link
+        window.location.href = '/?stream={{ stream.id }}';
+    </script>
+</head>
+<body>
+    <p>Redirecionando para a stream...</p>
+</body>
+</html>

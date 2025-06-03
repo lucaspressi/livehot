@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="LiveHot - Plataforma Premium de Live Streaming">
+    <meta property="og:description" content="Assista e compartilhe lives incríveis na LiveHot">
+    <meta property="og:type" content="website">
     <title>LiveHot - Plataforma Premium de Live Streaming</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#d946ef">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .line-clamp-2 {
@@ -84,11 +89,50 @@
         .high-contrast .text-white {
             color: #fff !important;
         }
+
+        /* Theme system */
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #ffffff;
+            --accent-color: #ec4899;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        .light-theme {
+            --bg-color: #ffffff;
+            --text-color: #1f2937;
+        }
+
+        .halloween-theme {
+            --bg-color: #1a1a1a;
+            --accent-color: #ff7518;
+        }
+
+        .christmas-theme {
+            --bg-color: #f4f4f4;
+            --accent-color: #008000;
+        }
+
+        .bg-base {
+            background-color: var(--bg-color);
+        }
+
+        .btn-accent {
+            background-color: var(--accent-color);
+        }
+
+        .btn-accent:hover {
+            opacity: 0.9;
+        }
     </style>
 </head>
-<body class="min-h-screen bg-slate-900 pb-16" id="app-body">
+<body class="min-h-screen pb-16" id="app-body">
     <!-- Loading Screen -->
-    <div id="loading" class="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
+    <div id="loading" class="fixed inset-0 bg-base flex items-center justify-center z-50">
         <div class="text-white text-center">
             <div class="animate-pulse text-2xl mb-4">🔥 LiveHot</div>
             <div class="text-slate-400">Carregando...</div>
@@ -100,7 +144,7 @@
         <div class="bg-slate-800 rounded-lg p-6 text-center text-white space-y-4 w-80">
             <p id="login-modal-title">Faça login para continuar assistindo</p>
             <div class="flex justify-center gap-4">
-                <button id="login-modal-login" class="bg-pink-600 px-4 py-2 rounded">Login</button>
+                <button id="login-modal-login" class="btn-accent px-4 py-2 rounded">Login</button>
                 <button id="login-modal-continue" class="bg-slate-600 px-4 py-2 rounded">Continuar 5 min</button>
             </div>
         </div>
@@ -122,7 +166,7 @@
                     <h1 class="text-2xl font-bold text-white mb-6 text-center">Login</h1>
                     
                     <div class="mb-6 space-y-2">
-                        <button onclick="fillDemoCredentials('streamer')" class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 px-4 rounded transition-colors">
+                        <button onclick="fillDemoCredentials('streamer')" class="w-full btn-accent text-white py-2 px-4 rounded transition-colors">
                             👑 Demo Streamer
                         </button>
                         <button onclick="fillDemoCredentials('viewer')" class="w-full bg-slate-600 hover:bg-slate-700 text-white py-2 px-4 rounded transition-colors">
@@ -143,7 +187,7 @@
 
                         <div id="login-error" class="text-red-400 text-sm hidden"></div>
 
-                        <button type="submit" class="w-full bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white py-2 px-4 rounded transition-colors">
+                        <button type="submit" class="w-full btn-accent disabled:opacity-50 text-white py-2 px-4 rounded transition-colors">
                             Entrar
                         </button>
                     </form>
@@ -184,7 +228,7 @@
                             <label for="stream-private" class="text-slate-300 text-sm">Stream privada</label>
                         </div>
 
-                        <button type="submit" class="w-full bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white py-3 px-4 rounded transition-colors font-medium">
+                        <button type="submit" class="w-full btn-accent disabled:opacity-50 text-white py-3 px-4 rounded transition-colors font-medium">
                             🔴 Criar Stream
                         </button>
                     </form>
@@ -218,7 +262,7 @@
                     </button>
 
                     <div id="broadcast-session" class="hidden space-y-4 mt-6">
-                        <video id="broadcast-video" class="w-full rounded" autoplay playsinline aria-label="Transmissão ao vivo">
+                        <video id="broadcast-video" class="w-full rounded" preload="none" playsinline data-src="" aria-label="Transmissão ao vivo">
                             <track id="captions-track" kind="captions" srclang="pt" label="Português" src="captions.vtt">
                         </video>
                     </div>
@@ -245,7 +289,7 @@
                                 <h4 class="text-white font-medium">Pacote Básico</h4>
                                 <p class="text-slate-400 text-sm">100 moedas</p>
                             </div>
-                            <button onclick="purchaseCoins('basic')" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded transition-colors">
+                            <button onclick="purchaseCoins('basic')" class="btn-accent text-white px-4 py-2 rounded transition-colors">
                                 $9.99
                             </button>
                         </div>
@@ -255,7 +299,7 @@
                                 <h4 class="text-white font-medium">Pacote Premium</h4>
                                 <p class="text-slate-400 text-sm">500 moedas</p>
                             </div>
-                            <button onclick="purchaseCoins('premium')" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded transition-colors">
+                            <button onclick="purchaseCoins('premium')" class="btn-accent text-white px-4 py-2 rounded transition-colors">
                                 $39.99
                             </button>
                         </div>
@@ -265,12 +309,44 @@
                                 <h4 class="text-white font-medium">Pacote VIP</h4>
                                 <p class="text-slate-400 text-sm">1000 moedas</p>
                             </div>
-                            <button onclick="purchaseCoins('vip')" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded transition-colors">
+                            <button onclick="purchaseCoins('vip')" class="btn-accent text-white px-4 py-2 rounded transition-colors">
                                 $69.99
                             </button>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Profile Page -->
+        <div id="profile-page" class="page hidden">
+            <div class="p-4 max-w-md mx-auto space-y-4">
+                <h1 class="text-2xl font-bold text-white mb-6">Perfil</h1>
+                <div class="flex flex-col items-center">
+                    <img id="profile-avatar" src="" class="w-32 h-32 rounded-full object-cover mb-2" alt="Avatar">
+                    <input type="text" id="avatar-url" class="w-full bg-slate-700 text-white rounded px-3 py-2" placeholder="URL do Avatar">
+                </div>
+                <div>
+                    <label class="block text-slate-300 text-sm font-medium mb-2">Nome de Exibição</label>
+                    <input type="text" id="display-name" class="w-full bg-slate-700 text-white rounded px-3 py-2">
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-300 text-sm">Tema Claro</span>
+                    <input type="checkbox" id="profile-theme-toggle" class="rounded">
+                </div>
+                <div>
+                    <label class="block text-slate-300 text-sm font-medium mb-2">Cor de Destaque</label>
+                    <input type="color" id="accent-color" class="w-full h-10">
+                </div>
+                <div>
+                    <label class="block text-slate-300 text-sm font-medium mb-2">Tema Especial</label>
+                    <select id="season-theme" class="w-full bg-slate-700 text-white rounded px-3 py-2">
+                        <option value="">Nenhum</option>
+                        <option value="halloween">Halloween</option>
+                        <option value="christmas">Natal</option>
+                    </select>
+                </div>
+                <button id="save-profile" class="btn-accent text-white px-4 py-2 rounded w-full">Salvar</button>
             </div>
         </div>
 
@@ -287,7 +363,7 @@
     </div>
 
     <!-- Navigation -->
-    <nav id="navigation" class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 hidden" role="navigation" aria-label="Navegação principal">
+    <nav id="navigation" class="fixed bottom-0 left-0 right-0 bg-base border-t border-slate-700 hidden" role="navigation" aria-label="Navegação principal">
         <div class="flex justify-around items-center py-2">
             <button onclick="showPage('home')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Página inicial">
                 <span class="text-xl" aria-hidden="true">🏠</span>
@@ -308,6 +384,11 @@
                 <span class="text-xl" aria-hidden="true">💰</span>
                 <span class="text-xs mt-1">Carteira</span>
             </button>
+
+            <button onclick="showPage('profile')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white">
+                <span class="text-xl">⚙️</span>
+                <span class="text-xs mt-1">Perfil</span>
+            </button>
             
             <button id="auth-nav" onclick="toggleAuth()" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Autenticação">
                 <span class="text-xl" aria-hidden="true">👤</span>
@@ -321,9 +402,11 @@
         </div>
     </nav>
 
-    <script src="https://unpkg.com/livekit-client/dist/livekit-client.min.js"></script>
     <script src="config.js"></script>
-    <script src="app.js"></script>
+    <script>
+        const script = document.createElement('script');
+        script.src = (window.CDN_BASE_URL || '') + 'app.js';
+        document.body.appendChild(script);
+    </script>
 </body>
 </html>
-

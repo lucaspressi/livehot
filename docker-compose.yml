@@ -9,6 +9,14 @@ services:
       - LIVEKIT_URL=${LIVEKIT_URL}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+  livekit:
+    image: livekit/livekit-server
+    environment:
+      - LIVEKIT_KEYS=${LIVEKIT_API_KEY}:${LIVEKIT_API_SECRET}
+    command: --node-ip=0.0.0.0
+    ports:
+      - "7880:7880"
+      - "7881:7881"
   frontend:
     build:
       context: .
@@ -20,3 +28,4 @@ services:
       - "8000:80"
     depends_on:
       - backend
+      - livekit
