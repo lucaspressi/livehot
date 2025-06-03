@@ -122,6 +122,11 @@ do próprio host enquanto os serviços rodam em contêineres.
 
 ### **Streams**
 - `GET /api/streams` - Listar streams ativas
+- `GET /api/streams?category={nome}` - Filtrar por categoria
+- `GET /api/streams/ranking` - Ranking por viewers em tempo real
+- `GET /api/streams/trending` - Streams em alta por engajamento
+- `GET /api/streams/categories` - Categorias disponíveis
+- `GET /api/streams/recommendations` - Recomendações personalizadas (requer login)
 - `POST /api/streams` - Criar nova stream
 - `POST /api/streams/{id}/start` - Iniciar transmissão
 - `POST /api/streams/{id}/stop` - Parar transmissão
@@ -134,6 +139,9 @@ do próprio host enquanto os serviços rodam em contêineres.
 ### **Carteira**
 - `GET /api/wallet` - Dados da carteira
 - `POST /api/wallet/purchase` - Comprar moedas
+
+### **Usuário**
+- `PUT /api/users/preferences` - Atualizar categorias favoritas
 
 ## 🎯 **Status do Projeto**
 

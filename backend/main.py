@@ -113,7 +113,8 @@ demo_users = {
         "isVerified": True,
         "walletBalance": 1000,
         "avatarUrl": "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
-        "createdAt": datetime.now().isoformat()
+        "createdAt": datetime.now().isoformat(),
+        "preferredCategories": []
     },
     "viewer@livehot.app": {
         "id": "demo-user-2", 
@@ -125,7 +126,8 @@ demo_users = {
         "isVerified": False,
         "walletBalance": 500,
         "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-        "createdAt": datetime.now().isoformat()
+        "createdAt": datetime.now().isoformat(),
+        "preferredCategories": []
     }
 }
 
@@ -141,6 +143,7 @@ demo_streams = [
         "isLive": True,
         "isPrivate": False,
         "viewerCount": 127,
+        "giftCount": 0,
         "streamerId": "demo-user-1",
         "streamer": demo_users["demo@livehot.app"],
         "startedAt": datetime.now().isoformat(),
@@ -221,7 +224,8 @@ def register():
         'isVerified': False,
         'walletBalance': 100,
         'avatarUrl': f"https://ui-avatars.com/api/?name={displayName}&background=random",
-        'createdAt': datetime.now().isoformat()
+        'createdAt': datetime.now().isoformat(),
+        'preferredCategories': []
     }
     
     token = create_token({'email': email}, app.config['SECRET_KEY'])
@@ -247,8 +251,21 @@ def get_current_user(current_user):
 def get_streams():
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 20))
-    
+    category = request.args.get('category')
+
+    token = request.headers.get('Authorization')
+    if token and token.startswith('Bearer '):
+        data = verify_token(token[7:], app.config['SECRET_KEY'])
+        if data:
+            current_user = users.get(data['email'])
+            if current_user is not None and category:
+                prefs = current_user.setdefault('preferredCategories', [])
+                if category not in prefs:
+                    prefs.append(category)
+
     live_streams = [s for s in streams.values() if s['isLive']]
+    if category:
+        live_streams = [s for s in live_streams if s['category'].lower() == category.lower()]
     total = len(live_streams)
     
     start = (page - 1) * limit
@@ -296,6 +313,7 @@ def create_stream(current_user):
         'isLive': False,
         'isPrivate': data.get('isPrivate', False),
         'viewerCount': 0,
+        'giftCount': 0,
         'streamerId': current_user['id'],
         'streamer': {k: v for k, v in current_user.items() if k != 'passwordHash'},
         'startedAt': datetime.now().isoformat(),
@@ -396,11 +414,53 @@ def update_stream(current_user, stream_id):
         stream['category'] = data['category']
     if 'isPrivate' in data:
         stream['isPrivate'] = data['isPrivate']
-    
+
     return jsonify({
         'success': True,
         'data': stream
     })
+
+# Ranking and trending endpoints
+@app.route('/api/streams/ranking', methods=['GET'])
+def streams_ranking():
+    limit = int(request.args.get('limit', 10))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    ranked = sorted(live_streams, key=lambda s: s.get('viewerCount', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': ranked}})
+
+
+@app.route('/api/streams/trending', methods=['GET'])
+def streams_trending():
+    limit = int(request.args.get('limit', 10))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    for s in live_streams:
+        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
+    trending = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': trending}})
+
+
+@app.route('/api/streams/categories', methods=['GET'])
+def stream_categories():
+    categories = {}
+    for s in streams.values():
+        if s['isLive']:
+            categories[s['category']] = categories.get(s['category'], 0) + 1
+    category_list = [{'name': k, 'count': v} for k, v in categories.items()]
+    return jsonify({'success': True, 'data': {'categories': category_list}})
+
+
+@app.route('/api/streams/recommendations', methods=['GET'])
+@token_required
+def stream_recommendations(current_user):
+    limit = int(request.args.get('limit', 5))
+    live_streams = [s for s in streams.values() if s['isLive']]
+    for s in live_streams:
+        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
+    preferred = current_user.get('preferredCategories') or []
+    if preferred:
+        live_streams = [s for s in live_streams if s['category'] in preferred]
+    recommended = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
+    return jsonify({'success': True, 'data': {'streams': recommended}})
 
 # Gifts routes
 @app.route('/api/gifts', methods=['GET'])
@@ -427,9 +487,13 @@ def send_gift(current_user):
     recipient = next((u for u in users.values() if u['id'] == recipient_id), None)
     if not recipient:
         return jsonify({'success': False, 'error': {'message': 'Recipient not found'}}), 404
-    
+
     current_user['walletBalance'] -= gift['costCoins']
     recipient['walletBalance'] += int(gift['costCoins'] * 0.7)
+
+    stream = next((s for s in streams.values() if s['streamerId'] == recipient_id and s['isLive']), None)
+    if stream:
+        stream['giftCount'] = stream.get('giftCount', 0) + 1
     
     return jsonify({
         'success': True,
@@ -469,7 +533,7 @@ def purchase_coins(current_user):
     
     coins = packages[package]['coins']
     current_user['walletBalance'] += coins
-    
+
     return jsonify({
         'success': True,
         'data': {
@@ -478,6 +542,17 @@ def purchase_coins(current_user):
             'transactionId': str(uuid.uuid4())
         }
     })
+
+
+@app.route('/api/users/preferences', methods=['PUT'])
+@token_required
+def update_preferences(current_user):
+    data = request.get_json()
+    categories = data.get('categories', [])
+    if not isinstance(categories, list):
+        return jsonify({'success': False, 'error': {'message': 'Categories must be a list'}}), 400
+    current_user['preferredCategories'] = categories
+    return jsonify({'success': True, 'data': {'preferredCategories': categories}})
 
 # Users routes
 @app.route('/api/users/<user_id>', methods=['GET'])

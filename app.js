@@ -52,8 +52,25 @@ const api = {
     },
 
     // Streams
-    async getStreams(page = 1, limit = 20) {
-        return this.request(`/streams?page=${page}&limit=${limit}`);
+    async getStreams(page = 1, limit = 20, category = '') {
+        const catQuery = category ? `&category=${encodeURIComponent(category)}` : '';
+        return this.request(`/streams?page=${page}&limit=${limit}${catQuery}`);
+    },
+
+    async getRanking(limit = 10) {
+        return this.request(`/streams/ranking?limit=${limit}`);
+    },
+
+    async getTrending(limit = 10) {
+        return this.request(`/streams/trending?limit=${limit}`);
+    },
+
+    async getCategories() {
+        return this.request('/streams/categories');
+    },
+
+    async getRecommendations(limit = 5) {
+        return this.request(`/streams/recommendations?limit=${limit}`);
     },
 
     async createStream(streamData) {
@@ -84,6 +101,13 @@ const api = {
         return this.request('/wallet/purchase', {
             method: 'POST',
             body: JSON.stringify({ package: packageType }),
+        });
+    },
+
+    async updatePreferences(categories) {
+        return this.request('/users/preferences', {
+            method: 'PUT',
+            body: JSON.stringify({ categories }),
         });
     },
 };
@@ -238,11 +262,11 @@ function cancelLoginTimer() {
 }
 
 // Stream functions
-async function loadStreams() {
+async function loadStreams(category = '') {
     const container = document.getElementById('feed');
     try {
         container.innerHTML = `<div class="text-center text-slate-400 py-12">Carregando streams...</div>`;
-        const response = await api.getStreams();
+        const response = await api.getStreams(1, 20, category);
         const streams = response.data.streams;
         if (streams.length === 0) {
             container.innerHTML = `<div class="text-center text-slate-400 py-12">Nenhuma stream ativa no momento</div>`;
