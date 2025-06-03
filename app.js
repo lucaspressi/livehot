@@ -10,6 +10,36 @@ let cameraEnabled = false;
 let micEnabled = false;
 let livekitRoom = null;
 
+// Accessibility: High contrast mode
+function applyContrast() {
+    if (localStorage.getItem('highContrast') === 'true') {
+        document.getElementById('app-body').classList.add('high-contrast');
+    } else {
+        document.getElementById('app-body').classList.remove('high-contrast');
+    }
+}
+
+function toggleContrast() {
+    const enabled = localStorage.getItem('highContrast') === 'true';
+    localStorage.setItem('highContrast', String(!enabled));
+    applyContrast();
+}
+
+// Accessibility: Closed captions toggle
+function toggleCaptions() {
+    const video = document.getElementById('broadcast-video');
+    const track = video ? video.textTracks[0] : null;
+    const btn = document.getElementById('caption-btn');
+    if (!track || !btn) return;
+    if (track.mode === 'showing') {
+        track.mode = 'hidden';
+        btn.textContent = 'CC Off';
+    } else {
+        track.mode = 'showing';
+        btn.textContent = 'CC On';
+    }
+}
+
 // API Service
 const api = {
     async request(endpoint, options = {}) {
@@ -383,6 +413,12 @@ async function startStreamBroadcast() {
 document.addEventListener('DOMContentLoaded', async function() {
     // Initialize app
     await checkAuth();
+
+    applyContrast();
+    const video = document.getElementById('broadcast-video');
+    if (video && video.textTracks[0]) {
+        video.textTracks[0].mode = 'hidden';
+    }
     
     // Show navigation and hide loading
     hideElement('loading');
@@ -399,6 +435,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     let touchStartY = 0;
     feed.addEventListener("touchstart", e => { touchStartY = e.touches[0].clientY; });
     feed.addEventListener("touchend", e => { const diff = e.changedTouches[0].clientY - touchStartY; if (diff > 50) { feed.scrollBy({top: -window.innerHeight, behavior: "smooth"}); } else if (diff < -50) { feed.scrollBy({top: window.innerHeight, behavior: "smooth"}); } });
+
+    // Keyboard navigation for feed
+    document.addEventListener('keydown', e => {
+        if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+        if (e.key === 'ArrowDown') {
+            feed.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+        } else if (e.key === 'ArrowUp') {
+            feed.scrollBy({ top: -window.innerHeight, behavior: 'smooth' });
+        }
+    });
 
     // Login form
     document.getElementById('login-form').addEventListener('submit', async function(e) {
@@ -475,6 +521,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('camera-btn').addEventListener('click', toggleCamera);
     document.getElementById('mic-btn').addEventListener('click', toggleMic);
     document.getElementById('start-stream-btn').addEventListener('click', startStreamBroadcast);
+    const captionBtn = document.getElementById('caption-btn');
+    if (captionBtn) captionBtn.addEventListener('click', toggleCaptions);
 });
 
 // Make functions global for onclick handlers
@@ -482,4 +530,6 @@ window.showPage = showPage;
 window.fillDemoCredentials = fillDemoCredentials;
 window.toggleAuth = toggleAuth;
 window.purchaseCoins = purchaseCoins;
+window.toggleContrast = toggleContrast;
+window.toggleCaptions = toggleCaptions;
 

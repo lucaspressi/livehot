@@ -67,9 +67,26 @@
             align-items: center;
             justify-content: center;
         }
+
+        /* High contrast mode */
+        .high-contrast {
+            background-color: #000;
+            color: #fff;
+        }
+        .high-contrast .bg-slate-800,
+        .high-contrast .bg-slate-700,
+        .high-contrast .bg-slate-900 {
+            background-color: #000 !important;
+        }
+        .high-contrast .text-slate-300,
+        .high-contrast .text-slate-400,
+        .high-contrast .text-slate-700,
+        .high-contrast .text-white {
+            color: #fff !important;
+        }
     </style>
 </head>
-<body class="min-h-screen bg-slate-900 pb-16">
+<body class="min-h-screen bg-slate-900 pb-16" id="app-body">
     <!-- Loading Screen -->
     <div id="loading" class="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
         <div class="text-white text-center">
@@ -79,9 +96,9 @@
     </div>
 
     <!-- Login Modal -->
-    <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center hidden z-50">
+    <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center hidden z-50" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
         <div class="bg-slate-800 rounded-lg p-6 text-center text-white space-y-4 w-80">
-            <p>Faça login para continuar assistindo</p>
+            <p id="login-modal-title">Faça login para continuar assistindo</p>
             <div class="flex justify-center gap-4">
                 <button id="login-modal-login" class="bg-pink-600 px-4 py-2 rounded">Login</button>
                 <button id="login-modal-continue" class="bg-slate-600 px-4 py-2 rounded">Continuar 5 min</button>
@@ -90,7 +107,7 @@
     </div>
 
     <!-- Main Content -->
-    <div id="app" class="hidden">
+    <div id="app" class="hidden" role="main">
         <!-- Home Page -->
         <div id="home-page" class="page">
             <div id="feed" class="feed">
@@ -185,9 +202,13 @@
                             <button id="camera-btn" class="flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white">
                                 📹 Câmera Desligada
                             </button>
-                            
+
                             <button id="mic-btn" class="flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white">
                                 🎤 Microfone Desligado
+                            </button>
+
+                            <button id="caption-btn" class="flex items-center gap-2 px-4 py-2 rounded transition-colors bg-slate-600 hover:bg-slate-700 text-white">
+                                CC Off
                             </button>
                         </div>
                     </div>
@@ -197,7 +218,9 @@
                     </button>
 
                     <div id="broadcast-session" class="hidden space-y-4 mt-6">
-                        <video id="broadcast-video" class="w-full rounded" autoplay playsinline></video>
+                        <video id="broadcast-video" class="w-full rounded" autoplay playsinline aria-label="Transmissão ao vivo">
+                            <track id="captions-track" kind="captions" srclang="pt" label="Português" src="captions.vtt">
+                        </video>
                     </div>
                 </div>
             </div>
@@ -264,31 +287,36 @@
     </div>
 
     <!-- Navigation -->
-    <nav id="navigation" class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 hidden">
+    <nav id="navigation" class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 hidden" role="navigation" aria-label="Navegação principal">
         <div class="flex justify-around items-center py-2">
-            <button onclick="showPage('home')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white">
-                <span class="text-xl">🏠</span>
+            <button onclick="showPage('home')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Página inicial">
+                <span class="text-xl" aria-hidden="true">🏠</span>
                 <span class="text-xs mt-1">Home</span>
             </button>
             
-            <button onclick="showPage('search')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white">
-                <span class="text-xl">🔍</span>
+            <button onclick="showPage('search')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Buscar">
+                <span class="text-xl" aria-hidden="true">🔍</span>
                 <span class="text-xs mt-1">Buscar</span>
             </button>
             
-            <button id="broadcast-nav" onclick="showPage('broadcast')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white hidden">
-                <span class="text-xl">📹</span>
+            <button id="broadcast-nav" onclick="showPage('broadcast')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white hidden" aria-label="Transmitir">
+                <span class="text-xl" aria-hidden="true">📹</span>
                 <span class="text-xs mt-1">Transmitir</span>
             </button>
             
-            <button onclick="showPage('wallet')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white">
-                <span class="text-xl">💰</span>
+            <button onclick="showPage('wallet')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Carteira">
+                <span class="text-xl" aria-hidden="true">💰</span>
                 <span class="text-xs mt-1">Carteira</span>
             </button>
             
-            <button id="auth-nav" onclick="toggleAuth()" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white">
-                <span class="text-xl">👤</span>
+            <button id="auth-nav" onclick="toggleAuth()" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Autenticação">
+                <span class="text-xl" aria-hidden="true">👤</span>
                 <span id="auth-text" class="text-xs mt-1">Login</span>
+            </button>
+
+            <button id="contrast-toggle" onclick="toggleContrast()" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Alternar alto contraste">
+                <span class="text-xl" aria-hidden="true">🌗</span>
+                <span class="text-xs mt-1">Contraste</span>
             </button>
         </div>
     </nav>
