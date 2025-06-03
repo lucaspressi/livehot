@@ -262,21 +262,6 @@ function showPage(pageId) {
         }
     }
     
-    // Update navigation
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('text-white');
-        btn.classList.add('text-slate-400');
-        btn.setAttribute('aria-selected', 'false');
-    });
-    
-    // Highlight current nav button
-    const currentNavBtn = document.querySelector(`[onclick="showPage('${pageId}')"]`);
-    if (currentNavBtn) {
-        currentNavBtn.classList.remove('text-slate-400');
-        currentNavBtn.classList.add('text-white');
-        currentNavBtn.setAttribute('aria-selected', 'true');
-    }
-    
     // Announce page change
     const pageNames = {
         'home': 'Página inicial',
@@ -308,13 +293,7 @@ function showPage(pageId) {
                 showElement('broadcast-session');
             }
             break;
-        case 'login':
-            hideElement('navigation');
-            break;
         default:
-            if (currentUser) {
-                showElement('navigation');
-            }
             break;
     }
 }
@@ -381,7 +360,6 @@ async function checkAuth() {
 
 function updateAuthUI() {
     if (currentUser) {
-        showElement('navigation');
         hideElement('login-page');
         
         // Update user info in UI
@@ -400,9 +378,6 @@ function updateAuthUI() {
         walletElements.forEach(el => {
             el.textContent = `${currentUser.walletBalance || 0} coins`;
         });
-    } else {
-        hideElement('navigation');
-        showPage('login');
     }
 }
 
@@ -413,12 +388,12 @@ function logout() {
         livekitRoom.disconnect();
         livekitRoom = null;
     }
-    showPage('login');
+    showPage('home');
     showNotification('Logout realizado com sucesso!', 'success');
 }
 
 // Login timer functions
-function startLoginTimer(minutes = 2) {
+function startLoginTimer(minutes = 10) {
     const modal = document.getElementById('login-modal');
     if (!modal || currentUser) return;
     
@@ -760,20 +735,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         video.textTracks[0].mode = 'hidden';
     }
     
-    // Show navigation and hide loading
+    // Show app and hide loading
     hideElement('loading');
     showElement('app');
-    
-    if (currentUser) {
-        showElement('navigation');
-        showPage('home');
-    } else {
-        showPage('login');
-    }
-    
+
+    showPage('home');
+
     // Start login reminder timer
     if (!currentUser) {
-        startLoginTimer();
+        startLoginTimer(10);
     }
     
     // Login modal handlers
@@ -1143,13 +1113,7 @@ function showPage(pageId) {
                 showElement('broadcast-session');
             }
             break;
-        case 'login':
-            hideElement('navigation');
-            break;
         default:
-            if (currentUser) {
-                showElement('navigation');
-            }
             break;
     }
 }
@@ -1214,7 +1178,6 @@ async function checkAuth() {
 
 function updateAuthUI() {
     if (currentUser) {
-        showElement('navigation');
         hideElement('login-page');
         
         // Update user info in UI
@@ -1232,9 +1195,6 @@ function updateAuthUI() {
         walletElements.forEach(el => {
             el.textContent = `${currentUser.walletBalance || 0} coins`;
         });
-    } else {
-        hideElement('navigation');
-        showPage('login');
     }
 }
 
@@ -1245,12 +1205,12 @@ function logout() {
         livekitRoom.disconnect();
         livekitRoom = null;
     }
-    showPage('login');
+    showPage('home');
     showNotification('Logout realizado com sucesso!', 'success');
 }
 
 // Login timer functions
-function startLoginTimer(minutes = 2) {
+function startLoginTimer(minutes = 10) {
     const modal = document.getElementById('login-modal');
     if (!modal || currentUser) return;
     
@@ -1552,20 +1512,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Initialize app
     await checkAuth();
     
-    // Show navigation and hide loading
+    // Show app and hide loading
     hideElement('loading');
     showElement('app');
-    
-    if (currentUser) {
-        showElement('navigation');
-        showPage('home');
-    } else {
-        showPage('login');
-    }
-    
+
+    showPage('home');
+
     // Start login reminder timer
     if (!currentUser) {
-        startLoginTimer();
+        startLoginTimer(10);
     }
     
     // Login modal handlers
