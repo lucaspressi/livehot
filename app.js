@@ -1,723 +1,814 @@
-from flask import Flask, request, jsonify, render_template, abort, url_for, make_response
-from flask_cors import CORS
-from backend.routes.user import user_bp
-import os
-from dotenv import load_dotenv
-import json
-import uuid
-from io import BytesIO
-from datetime import datetime, timedelta
-import hashlib
-import base64
-import hmac
-from functools import wraps
-import jwt
-from PIL import Image
+// API Configuration
+const API_BASE_URL = window.API_BASE_URL || '/api';
 
-load_dotenv()
+// Global state
+let currentUser = null;
+let currentStream = null;
+let loginTimeout;
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'livehot-secret-key-change-in-production')
+let cameraEnabled = false;
+let micEnabled = false;
+let livekitRoom = null;
 
-# LiveKit configuration for scalable streaming
-LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'wss://livekit.example.com')
-LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
-LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')
+// Theme system
+const defaultTheme = { mode: 'dark', accentColor: '#ec4899', special: '' };
 
-# Enable CORS for all routes with specific configuration
-CORS(app,
-     origins=['*'],
-     allow_headers=['Content-Type', 'Authorization'],
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-     supports_credentials=True)
+function applyTheme(theme = defaultTheme) {
+    document.body.classList.remove('light-theme', 'halloween-theme', 'christmas-theme');
+    if (theme.mode === 'light') {
+        document.body.classList.add('light-theme');
+    }
+    if (theme.special === 'halloween') {
+        document.body.classList.add('halloween-theme');
+    } else if (theme.special === 'christmas') {
+        document.body.classList.add('christmas-theme');
+    }
+    document.documentElement.style.setProperty('--accent-color', theme.accentColor || defaultTheme.accentColor);
+}
 
-# Register user routes
-app.register_blueprint(user_bp, url_prefix='/api')
-
-# Simple JWT implementation
-def create_token(payload, secret, expiry_hours=168):
-    header = {"alg": "HS256", "typ": "JWT"}
-    payload['exp'] = int((datetime.utcnow() + timedelta(hours=expiry_hours)).timestamp())
-    
-    header_encoded = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip('=')
-    payload_encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip('=')
-    
-    message = f"{header_encoded}.{payload_encoded}"
-    signature = base64.urlsafe_b64encode(
-        hmac.new(secret.encode(), message.encode(), hashlib.sha256).digest()
-    ).decode().rstrip('=')
-    
-    return f"{message}.{signature}"
-
-def verify_token(token, secret):
-    try:
-        parts = token.split('.')
-        if len(parts) != 3:
-            return None
-            
-        header_encoded, payload_encoded, signature = parts
-        
-        message = f"{header_encoded}.{payload_encoded}"
-        expected_signature = base64.urlsafe_b64encode(
-            hmac.new(secret.encode(), message.encode(), hashlib.sha256).digest()
-        ).decode().rstrip('=')
-        
-        if signature != expected_signature:
-            return None
-        
-        payload_padded = payload_encoded + '=' * (4 - len(payload_encoded) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_padded))
-        
-        if payload.get('exp', 0) < int(datetime.utcnow().timestamp()):
-            return None
-            
-        return payload
-    except:
-        return None
-
-# Generate LiveKit token for publishing or viewing
-def generate_livekit_token(room, identity, name, can_publish=False, ttl_seconds=3600):
-    now = datetime.utcnow()
-    payload = {
-        'iss': LIVEKIT_API_KEY,
-        'sub': identity,
-        'name': name,
-        'nbf': int(now.timestamp()),
-        'exp': int((now + timedelta(seconds=ttl_seconds)).timestamp()),
-        'video': {
-            'roomJoin': True,
-            'room': room,
-            'canPublish': can_publish,
-            'canSubscribe': True
+function loadStoredTheme() {
+    const stored = localStorage.getItem('theme');
+    if (stored) {
+        try { 
+            return JSON.parse(stored); 
+        } catch (e) {
+            console.warn('Failed to parse stored theme:', e);
         }
     }
-    return jwt.encode(payload, LIVEKIT_API_SECRET, algorithm='HS256')
-
-# In-memory storage
-users = {}
-streams = {}
-analytics = {
-    'view_time': {},       # total seconds watched per stream
-    'watch_sessions': {},  # (user_id, stream_id) -> start_time
-    'visitor_count': 0,
-    'registrations': 0,
-    'logins': {},          # user_id -> [timestamps]
-    'gifts_sent': 0,
-    'revenue': 0.0
+    return defaultTheme;
 }
-gifts = [
-    {"id": "1", "name": "Heart", "emoji": "❤️", "costCoins": 10, "rarity": "COMMON"},
-    {"id": "2", "name": "Rose", "emoji": "🌹", "costCoins": 25, "rarity": "UNCOMMON"},
-    {"id": "3", "name": "Diamond", "emoji": "💎", "costCoins": 100, "rarity": "RARE"},
-    {"id": "4", "name": "Crown", "emoji": "👑", "costCoins": 500, "rarity": "LEGENDARY"}
-]
 
-# Demo users
-demo_users = {
-    "demo@livehot.app": {
-        "id": "demo-user-1",
-        "email": "demo@livehot.app",
-        "username": "demo_streamer",
-        "displayName": "Demo Streamer",
-        "passwordHash": hashlib.sha256("password123".encode()).hexdigest(),
-        "isStreamer": True,
-        "isVerified": True,
-        "walletBalance": 1000,
-        "avatarUrl": "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
-        "createdAt": datetime.now().isoformat(),
-        "preferredCategories": []
+function storeTheme(theme) {
+    localStorage.setItem('theme', JSON.stringify(theme));
+}
+
+// API Service
+const api = {
+    async request(endpoint, options = {}) {
+        const token = localStorage.getItem('token');
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` }),
+            ...options.headers,
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                ...options,
+                headers,
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error?.message || 'Request failed');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('API Error:', error);
+            throw error;
+        }
     },
-    "viewer@livehot.app": {
-        "id": "demo-user-2", 
-        "email": "viewer@livehot.app",
-        "username": "demo_viewer",
-        "displayName": "Demo Viewer",
-        "passwordHash": hashlib.sha256("password123".encode()).hexdigest(),
-        "isStreamer": False,
-        "isVerified": False,
-        "walletBalance": 500,
-        "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-        "createdAt": datetime.now().isoformat(),
-        "preferredCategories": []
+
+    // Auth
+    async login(email, password) {
+        return this.request('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email, password }),
+        });
+    },
+
+    async register(email, password, username, displayName) {
+        return this.request('/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ email, password, username, displayName }),
+        });
+    },
+
+    async getCurrentUser() {
+        return this.request('/auth/me');
+    },
+
+    // Streams
+    async getStreams(page = 1, limit = 20, category = null) {
+        const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+        if (category) params.append('category', category);
+        return this.request(`/streams?${params.toString()}`);
+    },
+
+    async createStream(streamData) {
+        return this.request('/streams', {
+            method: 'POST',
+            body: JSON.stringify(streamData),
+        });
+    },
+
+    async startStream(streamId) {
+        return this.request(`/streams/${streamId}/start`, {
+            method: 'POST',
+        });
+    },
+
+    async stopStream(streamId) {
+        return this.request(`/streams/${streamId}/stop`, {
+            method: 'POST',
+        });
+    },
+
+    async startBroadcast(streamId) {
+        return this.request(`/broadcast/${streamId}`, {
+            method: 'POST',
+        });
+    },
+
+    // Wallet
+    async getWallet() {
+        return this.request('/wallet');
+    },
+
+    async purchaseCoins(packageType) {
+        return this.request('/wallet/purchase', {
+            method: 'POST',
+            body: JSON.stringify({ package: packageType }),
+        });
+    },
+
+    // Users
+    async updateUser(userId, data) {
+        return this.request(`/users/${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async updatePreferences(categories) {
+        return this.request('/users/preferences', {
+            method: 'PUT',
+            body: JSON.stringify({ categories }),
+        });
+    },
+
+    // Gifts
+    async getGifts() {
+        return this.request('/gifts');
+    },
+
+    async sendGift(giftId, recipientId) {
+        return this.request('/gifts/send', {
+            method: 'POST',
+            body: JSON.stringify({ giftId, recipientId }),
+        });
+    }
+};
+
+// Utility functions
+function showElement(id) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.classList.remove('hidden');
     }
 }
 
-users.update(demo_users)
-
-# Demo streams
-demo_streams = [
-    {
-        "id": "stream-1",
-        "title": "🔥 Hot Live Show - Come Chat!",
-        "description": "Interactive live streaming with chat and gifts",
-        "category": "Entertainment",
-        "isLive": True,
-        "isPrivate": False,
-        "viewerCount": 127,
-        "giftCount": 0,
-        "streamerId": "demo-user-1",
-        "streamer": demo_users["demo@livehot.app"],
-        "startedAt": datetime.now().isoformat(),
-        "thumbnailUrl": "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400&h=300&fit=crop"
+function hideElement(id) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.classList.add('hidden');
     }
-]
+}
 
-streams.update({s["id"]: s for s in demo_streams})
+function showPage(pageId) {
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(page => {
+        page.classList.add('hidden');
+    });
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({'success': False, 'error': {'message': 'Token is missing'}}), 401
-        
-        try:
-            if token.startswith('Bearer '):
-                token = token[7:]
-            data = verify_token(token, app.config['SECRET_KEY'])
-            if not data:
-                return jsonify({'success': False, 'error': {'message': 'Token is invalid'}}), 401
-            current_user = users.get(data['email'])
-            if not current_user:
-                return jsonify({'success': False, 'error': {'message': 'User not found'}}), 401
-        except:
-            return jsonify({'success': False, 'error': {'message': 'Token is invalid'}}), 401
-        
-        return f(current_user, *args, **kwargs)
-    return decorated
-
-# Auth routes
-@app.route('/api/auth/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+    // Hide live broadcast UI when leaving broadcast page
+    if (pageId !== 'broadcast') {
+        hideElement('broadcast-session');
+    }
     
-    if not email or not password:
-        return jsonify({'success': False, 'error': {'message': 'Email and password required'}}), 400
+    // Show selected page
+    showElement(`${pageId}-page`);
     
-    user = users.get(email)
-    if not user or user['passwordHash'] != hashlib.sha256(password.encode()).hexdigest():
-        return jsonify({'success': False, 'error': {'message': 'Invalid credentials'}}), 401
+    // Update navigation
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('text-white');
+        btn.classList.add('text-slate-400');
+    });
+    
+    // Highlight current nav button
+    const currentNavBtn = document.querySelector(`[onclick="showPage('${pageId}')"]`);
+    if (currentNavBtn) {
+        currentNavBtn.classList.remove('text-slate-400');
+        currentNavBtn.classList.add('text-white');
+    }
+    
+    // Load page content
+    switch(pageId) {
+        case 'home':
+            loadStreams();
+            break;
+        case 'wallet':
+            loadWallet();
+            break;
+        case 'profile':
+            loadProfile();
+            break;
+        case 'broadcast':
+            if (!currentUser?.isStreamer) {
+                showPage('home');
+                showNotification('Apenas streamers podem acessar esta página', 'error');
+                return;
+            }
+            if (livekitRoom) {
+                showElement('broadcast-session');
+            }
+            break;
+        case 'login':
+            hideElement('navigation');
+            break;
+        default:
+            if (currentUser) {
+                showElement('navigation');
+            }
+            break;
+    }
+}
 
-    token = create_token({'email': email}, app.config['SECRET_KEY'])
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg text-white max-w-sm transition-all duration-300 ${
+        type === 'error' ? 'bg-red-600' : 
+        type === 'success' ? 'bg-green-600' : 
+        'bg-blue-600'
+    }`;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.style.transform = 'translateX(0)';
+        notification.style.opacity = '1';
+    }, 10);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.style.transform = 'translateX(100%)';
+        notification.style.opacity = '0';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
+    }, 3000);
+}
 
-    analytics['logins'].setdefault(user['id'], []).append(datetime.now())
-
-    return jsonify({
-        'success': True,
-        'data': {
-            'token': token,
-            'user': {k: v for k, v in user.items() if k != 'passwordHash'}
+// Auth functions
+async function checkAuth() {
+    const token = localStorage.getItem('token');
+    if (token) {
+        try {
+            const response = await api.getCurrentUser();
+            currentUser = response.data;
+            
+            // Apply user's theme settings
+            const theme = { 
+                mode: currentUser.theme || 'dark', 
+                accentColor: currentUser.accentColor || defaultTheme.accentColor, 
+                special: currentUser.specialTheme || '' 
+            };
+            applyTheme(theme);
+            storeTheme(theme);
+            
+            updateAuthUI();
+            return true;
+        } catch (error) {
+            console.warn('Auth check failed:', error);
+            localStorage.removeItem('token');
+            currentUser = null;
         }
-    })
+    }
+    return false;
+}
 
-@app.route('/api/auth/register', methods=['POST'])
-def register():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    username = data.get('username')
-    displayName = data.get('displayName')
+function updateAuthUI() {
+    if (currentUser) {
+        showElement('navigation');
+        hideElement('login-page');
+        
+        // Update user info in UI
+        const userNameElements = document.querySelectorAll('.user-name');
+        userNameElements.forEach(el => {
+            el.textContent = currentUser.displayName || currentUser.username;
+        });
+        
+        const userAvatarElements = document.querySelectorAll('.user-avatar');
+        userAvatarElements.forEach(el => {
+            el.src = currentUser.avatarUrl || '';
+        });
+        
+        const walletElements = document.querySelectorAll('.wallet-balance');
+        walletElements.forEach(el => {
+            el.textContent = `${currentUser.walletBalance || 0} coins`;
+        });
+    } else {
+        hideElement('navigation');
+        showPage('login');
+    }
+}
+
+function logout() {
+    localStorage.removeItem('token');
+    currentUser = null;
+    if (livekitRoom) {
+        livekitRoom.disconnect();
+        livekitRoom = null;
+    }
+    showPage('login');
+    showNotification('Logout realizado com sucesso!', 'success');
+}
+
+// Login timer functions
+function startLoginTimer(minutes = 2) {
+    const modal = document.getElementById('login-modal');
+    if (!modal || currentUser) return;
     
-    if not all([email, password, username, displayName]):
-        return jsonify({'success': False, 'error': {'message': 'All fields required'}}), 400
+    clearTimeout(loginTimeout);
+    loginTimeout = setTimeout(() => {
+        if (!currentUser) {
+            showElement('login-modal');
+        }
+    }, minutes * 60 * 1000);
+}
+
+function cancelLoginTimer() {
+    clearTimeout(loginTimeout);
+    hideElement('login-modal');
+}
+
+// Profile functions
+function loadProfile() {
+    if (!currentUser) {
+        showNotification('Faça login para editar o perfil', 'error');
+        showPage('login');
+        return;
+    }
     
-    if email in users:
-        return jsonify({'success': False, 'error': {'message': 'User already exists'}}), 400
+    const avatarUrlInput = document.getElementById('avatar-url');
+    const displayNameInput = document.getElementById('display-name');
+    const profileAvatar = document.getElementById('profile-avatar');
+    const themeToggle = document.getElementById('profile-theme-toggle');
+    const accentColorInput = document.getElementById('accent-color');
+    const seasonThemeSelect = document.getElementById('season-theme');
     
-    user_id = str(uuid.uuid4())
-    users[email] = {
-        'id': user_id,
-        'email': email,
-        'username': username,
-        'displayName': displayName,
-        'passwordHash': hashlib.sha256(password.encode()).hexdigest(),
-        'isStreamer': False,
-        'isVerified': False,
-        'walletBalance': 100,
-        'avatarUrl': f"https://ui-avatars.com/api/?name={displayName}&background=random",
-        'createdAt': datetime.now().isoformat(),
-        'preferredCategories': []
+    if (avatarUrlInput) avatarUrlInput.value = currentUser.avatarUrl || '';
+    if (displayNameInput) displayNameInput.value = currentUser.displayName || '';
+    if (profileAvatar) profileAvatar.src = currentUser.avatarUrl || '';
+    if (themeToggle) themeToggle.checked = currentUser.theme === 'light';
+    if (accentColorInput) accentColorInput.value = currentUser.accentColor || defaultTheme.accentColor;
+    if (seasonThemeSelect) seasonThemeSelect.value = currentUser.specialTheme || '';
+}
+
+async function saveProfile() {
+    if (!currentUser) return;
+    
+    const avatarUrl = document.getElementById('avatar-url')?.value || '';
+    const displayName = document.getElementById('display-name')?.value || '';
+    const theme = document.getElementById('profile-theme-toggle')?.checked ? 'light' : 'dark';
+    const accentColor = document.getElementById('accent-color')?.value || defaultTheme.accentColor;
+    const specialTheme = document.getElementById('season-theme')?.value || '';
+    
+    const data = {
+        avatarUrl,
+        displayName,
+        theme,
+        accentColor,
+        specialTheme,
+    };
+
+    try {
+        const response = await api.updateUser(currentUser.id, data);
+        currentUser = response.data;
+        
+        // Apply new theme
+        const newTheme = { mode: theme, accentColor, special: specialTheme };
+        applyTheme(newTheme);
+        storeTheme(newTheme);
+        
+        updateAuthUI();
+        loadProfile();
+        showNotification('Perfil atualizado com sucesso!', 'success');
+    } catch (error) {
+        showNotification('Erro ao atualizar perfil: ' + error.message, 'error');
+    }
+}
+
+// Broadcast functions
+function toggleCamera() {
+    cameraEnabled = !cameraEnabled;
+    const btn = document.getElementById('camera-btn');
+    if (btn) {
+        btn.textContent = cameraEnabled ? '📹' : '📷';
+        btn.classList.toggle('bg-green-600', cameraEnabled);
+        btn.classList.toggle('bg-gray-600', !cameraEnabled);
+    }
+    
+    // Update camera in LiveKit if connected
+    if (livekitRoom && livekitRoom.localParticipant) {
+        const videoTrack = livekitRoom.localParticipant.videoTracks.values().next().value;
+        if (videoTrack) {
+            videoTrack.mute(!cameraEnabled);
+        }
+    }
+}
+
+function toggleMic() {
+    micEnabled = !micEnabled;
+    const btn = document.getElementById('mic-btn');
+    if (btn) {
+        btn.textContent = micEnabled ? '🎤' : '🔇';
+        btn.classList.toggle('bg-green-600', micEnabled);
+        btn.classList.toggle('bg-gray-600', !micEnabled);
+    }
+    
+    // Update microphone in LiveKit if connected
+    if (livekitRoom && livekitRoom.localParticipant) {
+        const audioTrack = livekitRoom.localParticipant.audioTracks.values().next().value;
+        if (audioTrack) {
+            audioTrack.mute(!micEnabled);
+        }
+    }
+}
+
+async function startStreamBroadcast() {
+    if (!currentUser?.isStreamer || !currentStream) {
+        showNotification('Erro: usuário não autorizado ou stream não encontrada', 'error');
+        return;
     }
 
-    analytics['registrations'] += 1
-    analytics['logins'].setdefault(user_id, []).append(datetime.now())
+    try {
+        const response = await api.startBroadcast(currentStream.id);
+        const { url, token, room } = response.data;
 
-    token = create_token({'email': email}, app.config['SECRET_KEY'])
-    
-    return jsonify({
-        'success': True,
-        'data': {
-            'token': token,
-            'user': {k: v for k, v in users[email].items() if k != 'passwordHash'}
-        }
-    }), 201
-
-@app.route('/api/auth/me', methods=['GET'])
-@token_required
-def get_current_user(current_user):
-    return jsonify({
-        'success': True,
-        'data': {k: v for k, v in current_user.items() if k != 'passwordHash'}
-    })
-
-# Streams routes
-@app.route('/api/streams', methods=['GET'])
-def get_streams():
-    if not request.headers.get('Authorization'):
-        analytics['visitor_count'] += 1
-
-    page = int(request.args.get('page', 1))
-    limit = int(request.args.get('limit', 20))
-    category = request.args.get('category')
-
-    token = request.headers.get('Authorization')
-    if token and token.startswith('Bearer '):
-        data = verify_token(token[7:], app.config['SECRET_KEY'])
-        if data:
-            current_user = users.get(data['email'])
-            if current_user is not None and category:
-                prefs = current_user.setdefault('preferredCategories', [])
-                if category not in prefs:
-                    prefs.append(category)
-
-    live_streams = [s for s in streams.values() if s['isLive']]
-    if category:
-        live_streams = [s for s in live_streams if s['category'].lower() == category.lower()]
-    total = len(live_streams)
-    
-    start = (page - 1) * limit
-    end = start + limit
-    paginated_streams = live_streams[start:end]
-    
-    return jsonify({
-        'success': True,
-        'data': {
-            'streams': paginated_streams,
-            'pagination': {
-                'page': page,
-                'limit': limit,
-                'total': total,
-                'totalPages': (total + limit - 1) // limit
+        // Initialize LiveKit
+        if (!window.livekitClient) {
+            try {
+                window.livekitClient = await import('https://unpkg.com/livekit-client/dist/livekit-client.esm.js');
+            } catch (error) {
+                showNotification('Erro ao carregar LiveKit. Verifique sua conexão.', 'error');
+                return;
             }
         }
-    })
 
-@app.route('/api/streams/<stream_id>', methods=['GET'])
-def get_stream(stream_id):
-    stream = streams.get(stream_id)
-    if not stream:
-        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
-    
-    return jsonify({
-        'success': True,
-        'data': stream
-    })
+        const { Room } = window.livekitClient;
+        livekitRoom = new Room();
+        
+        await livekitRoom.connect(url, token);
+        
+        // Get local tracks
+        const tracks = await window.livekitClient.createLocalTracks({
+            audio: micEnabled,
+            video: cameraEnabled,
+        });
+        
+        // Publish tracks
+        for (const track of tracks) {
+            await livekitRoom.localParticipant.publishTrack(track);
+            if (track.kind === 'video') {
+                const videoElement = document.getElementById('broadcast-video');
+                if (videoElement) {
+                    track.attach(videoElement);
+                }
+            }
+        }
+        
+        showElement('broadcast-session');
+        showNotification('Transmissão iniciada com sucesso!', 'success');
+        
+    } catch (error) {
+        console.error('Broadcast error:', error);
+        showNotification('Erro ao iniciar transmissão: ' + error.message, 'error');
+    }
+}
 
-@app.route('/api/streams', methods=['POST'])
-@token_required
-def create_stream(current_user):
-    if not current_user['isStreamer']:
-        return jsonify({'success': False, 'error': {'message': 'Only streamers can create streams'}}), 403
+// Stream functions
+async function loadStreams() {
+    const container = document.getElementById('streams-container');
+    if (!container) return;
     
-    data = request.get_json()
-    stream_id = str(uuid.uuid4())
+    container.innerHTML = '<div class="text-center py-8">Carregando streams...</div>';
     
-    stream = {
-        'id': stream_id,
-        'title': data.get('title', 'Untitled Stream'),
-        'description': data.get('description', ''),
-        'category': data.get('category', 'Entertainment'),
-        'isLive': False,
-        'isPrivate': data.get('isPrivate', False),
-        'viewerCount': 0,
-        'giftCount': 0,
-        'streamerId': current_user['id'],
-        'streamer': {k: v for k, v in current_user.items() if k != 'passwordHash'},
-        'startedAt': datetime.now().isoformat(),
-        'livekitRoomName': f"room_{stream_id}",
-        'livekitToken': f"demo_token_{stream_id}"
+    try {
+        const response = await api.getStreams();
+        const streams = response.data.streams || [];
+        
+        if (streams.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <div class="text-4xl mb-4">📺</div>
+                    <p class="text-slate-400">Nenhuma stream ao vivo no momento</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = streams.map(stream => `
+            <div class="stream-card bg-slate-800 rounded-lg overflow-hidden cursor-pointer hover:bg-slate-700 transition-colors" onclick="openStream('${stream.id}')">
+                <div class="relative">
+                    <img src="${stream.thumbnailUrl}" alt="${stream.title}" class="w-full h-48 object-cover" loading="lazy" />
+                    <div class="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded text-xs">
+                        🔴 AO VIVO
+                    </div>
+                    <div class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
+                        ${stream.viewerCount} viewers
+                    </div>
+                </div>
+                <div class="p-4">
+                    <div class="flex items-center mb-2">
+                        <img src="${stream.streamer.avatarUrl}" alt="${stream.streamer.displayName}" class="w-8 h-8 rounded-full mr-2" />
+                        <span class="font-semibold text-white">${stream.streamer.displayName}</span>
+                        ${stream.streamer.isVerified ? '<span class="ml-1 text-blue-400">✓</span>' : ''}
+                    </div>
+                    <h3 class="text-white font-medium mb-1 line-clamp-2">${stream.title}</h3>
+                    <p class="text-slate-400 text-sm">${stream.category}</p>
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading streams:', error);
+        container.innerHTML = `
+            <div class="text-center text-red-400 py-12">
+                <div class="text-4xl mb-4">❌</div>
+                <p>Erro ao carregar streams: ${error.message}</p>
+                <button onclick="loadStreams()" class="mt-4 bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded">
+                    Tentar Novamente
+                </button>
+            </div>
+        `;
+    }
+}
+
+function openStream(streamId) {
+    // Implementation for opening a specific stream
+    console.log('Opening stream:', streamId);
+    showNotification('Funcionalidade em desenvolvimento', 'info');
+}
+
+// Wallet functions
+async function loadWallet() {
+    if (!currentUser) return;
+    
+    try {
+        const response = await api.getWallet();
+        const balance = response.data.balance || 0;
+        
+        const balanceElements = document.querySelectorAll('.wallet-balance');
+        balanceElements.forEach(el => {
+            el.textContent = `${balance} coins`;
+        });
+        
+        currentUser.walletBalance = balance;
+        
+    } catch (error) {
+        console.error('Error loading wallet:', error);
+        showNotification('Erro ao carregar carteira: ' + error.message, 'error');
+    }
+}
+
+async function purchaseCoins(packageType) {
+    if (!currentUser) {
+        showNotification('Faça login para comprar moedas', 'error');
+        return;
     }
     
-    streams[stream_id] = stream
+    try {
+        const response = await api.purchaseCoins(packageType);
+        const { coins, newBalance } = response.data;
+        
+        currentUser.walletBalance = newBalance;
+        updateAuthUI();
+        loadWallet();
+        
+        showNotification(`Compra realizada! +${coins} moedas adicionadas`, 'success');
+        
+    } catch (error) {
+        console.error('Purchase error:', error);
+        showNotification('Erro na compra: ' + error.message, 'error');
+    }
+}
+
+// Demo functions
+function fillDemoCredentials(type = 'streamer') {
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
     
-    return jsonify({
-        'success': True,
-        'data': stream
-    }), 201
-
-@app.route('/api/streams/<stream_id>/start', methods=['POST'])
-@token_required
-def start_stream(current_user, stream_id):
-    stream = streams.get(stream_id)
-    if not stream:
-        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
-    
-    if stream['streamerId'] != current_user['id']:
-        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
-    
-    stream['isLive'] = True
-    stream['startedAt'] = datetime.now().isoformat()
-    
-    return jsonify({
-        'success': True,
-        'data': stream
-    })
-
-@app.route('/api/streams/<stream_id>/stop', methods=['POST'])
-@token_required
-def stop_stream(current_user, stream_id):
-    stream = streams.get(stream_id)
-    if not stream:
-        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
-    
-    if stream['streamerId'] != current_user['id']:
-        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
-    
-    stream['isLive'] = False
-    stream['endedAt'] = datetime.now().isoformat()
-
-    return jsonify({
-        'success': True,
-        'data': stream
-    })
-
-# Broadcast route - generates LiveKit token and returns connection info
-@app.route('/api/broadcast/<stream_id>', methods=['POST'])
-@token_required
-def broadcast_stream(current_user, stream_id):
-    stream = streams.get(stream_id)
-    if not stream:
-        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
-
-    is_owner = stream['streamerId'] == current_user['id']
-    if is_owner and not stream['isLive']:
-        stream['isLive'] = True
-        stream['startedAt'] = datetime.now().isoformat()
-
-    token = generate_livekit_token(
-        stream['livekitRoomName'],
-        identity=current_user['id'],
-        name=current_user['displayName'],
-        can_publish=is_owner
-    )
-
-    return jsonify({
-        'success': True,
-        'data': {
-            'url': LIVEKIT_URL,
-            'room': stream['livekitRoomName'],
-            'token': token,
-            'stream': stream
+    if (emailInput && passwordInput) {
+        if (type === 'streamer') {
+            emailInput.value = 'demo@livehot.app';
+        } else {
+            emailInput.value = 'viewer@livehot.app';
         }
-    })
+        passwordInput.value = 'password123';
+    }
+}
 
-@app.route('/api/streams/<stream_id>/watch', methods=['POST'])
-@token_required
-def watch_stream(current_user, stream_id):
-    action = request.get_json().get('action', 'start')
-    session_key = (current_user['id'], stream_id)
-    if action == 'start':
-        analytics['watch_sessions'][session_key] = datetime.now()
-        return jsonify({'success': True})
-    elif action == 'stop':
-        start = analytics['watch_sessions'].pop(session_key, None)
-        duration = 0
-        if start:
-            duration = (datetime.now() - start).total_seconds()
-            analytics['view_time'][stream_id] = analytics['view_time'].get(stream_id, 0) + duration
-        return jsonify({'success': True, 'duration': duration})
-    else:
-        return jsonify({'success': False, 'error': {'message': 'Invalid action'}}), 400
-
-@app.route('/api/streams/<stream_id>/update', methods=['PUT'])
-@token_required
-def update_stream(current_user, stream_id):
-    stream = streams.get(stream_id)
-    if not stream:
-        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
+function toggleAuth() {
+    const loginPage = document.getElementById('login-page');
+    const registerPage = document.getElementById('register-page');
     
-    if stream['streamerId'] != current_user['id']:
-        return jsonify({'success': False, 'error': {'message': 'Unauthorized'}}), 403
+    if (loginPage && registerPage) {
+        loginPage.classList.toggle('hidden');
+        registerPage.classList.toggle('hidden');
+    }
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', async function() {
+    // Initialize theme before anything else
+    applyTheme(loadStoredTheme());
     
-    data = request.get_json()
+    // Initialize app
+    await checkAuth();
     
-    if 'title' in data:
-        stream['title'] = data['title']
-    if 'description' in data:
-        stream['description'] = data['description']
-    if 'category' in data:
-        stream['category'] = data['category']
-    if 'isPrivate' in data:
-        stream['isPrivate'] = data['isPrivate']
-
-    return jsonify({
-        'success': True,
-        'data': stream
-    })
-
-# Ranking and trending endpoints
-@app.route('/api/streams/ranking', methods=['GET'])
-def streams_ranking():
-    limit = int(request.args.get('limit', 10))
-    live_streams = [s for s in streams.values() if s['isLive']]
-    ranked = sorted(live_streams, key=lambda s: s.get('viewerCount', 0), reverse=True)[:limit]
-    return jsonify({'success': True, 'data': {'streams': ranked}})
-
-@app.route('/api/streams/trending', methods=['GET'])
-def streams_trending():
-    limit = int(request.args.get('limit', 10))
-    live_streams = [s for s in streams.values() if s['isLive']]
-    for s in live_streams:
-        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
-    trending = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
-    return jsonify({'success': True, 'data': {'streams': trending}})
-
-@app.route('/api/streams/categories', methods=['GET'])
-def stream_categories():
-    categories = {}
-    for s in streams.values():
-        if s['isLive']:
-            categories[s['category']] = categories.get(s['category'], 0) + 1
-    category_list = [{'name': k, 'count': v} for k, v in categories.items()]
-    return jsonify({'success': True, 'data': {'categories': category_list}})
-
-@app.route('/api/streams/recommendations', methods=['GET'])
-@token_required
-def stream_recommendations(current_user):
-    limit = int(request.args.get('limit', 5))
-    live_streams = [s for s in streams.values() if s['isLive']]
-    for s in live_streams:
-        s['engagementScore'] = s.get('viewerCount', 0) + s.get('giftCount', 0) * 5
-    preferred = current_user.get('preferredCategories') or []
-    if preferred:
-        live_streams = [s for s in live_streams if s['category'] in preferred]
-    recommended = sorted(live_streams, key=lambda s: s.get('engagementScore', 0), reverse=True)[:limit]
-    return jsonify({'success': True, 'data': {'streams': recommended}})
-
-# Gifts routes
-@app.route('/api/gifts', methods=['GET'])
-def get_gifts():
-    return jsonify({
-        'success': True,
-        'data': {'gifts': gifts}
-    })
-
-@app.route('/api/gifts/send', methods=['POST'])
-@token_required
-def send_gift(current_user):
-    data = request.get_json()
-    gift_id = data.get('giftId')
-    recipient_id = data.get('recipientId')
+    // Show navigation and hide loading
+    hideElement('loading');
+    showElement('app');
     
-    gift = next((g for g in gifts if g['id'] == gift_id), None)
-    if not gift:
-        return jsonify({'success': False, 'error': {'message': 'Gift not found'}}), 404
-    
-    if current_user['walletBalance'] < gift['costCoins']:
-        return jsonify({'success': False, 'error': {'message': 'Insufficient balance'}}), 400
-    
-    recipient = next((u for u in users.values() if u['id'] == recipient_id), None)
-    if not recipient:
-        return jsonify({'success': False, 'error': {'message': 'Recipient not found'}}), 404
-
-    # Deduct coins from sender
-    current_user['walletBalance'] -= gift['costCoins']
-    # Give 70% to recipient (streamer)
-    recipient['walletBalance'] += int(gift['costCoins'] * 0.7)
-    
-    # Update stream gift count if recipient is currently streaming
-    stream = next((s for s in streams.values() if s['streamerId'] == recipient_id and s['isLive']), None)
-    if stream:
-        stream['giftCount'] = stream.get('giftCount', 0) + 1
-    
-    # Update analytics
-    analytics['gifts_sent'] += 1
-    analytics['revenue'] += gift['costCoins']
-
-    return jsonify({
-        'success': True,
-        'data': {
-            'gift': gift,
-            'recipient': {k: v for k, v in recipient.items() if k != 'passwordHash'},
-            'newBalance': current_user['walletBalance']
-        }
-    })
-
-# Wallet routes
-@app.route('/api/wallet', methods=['GET'])
-@token_required
-def get_wallet(current_user):
-    return jsonify({
-        'success': True,
-        'data': {
-            'balance': current_user['walletBalance'],
-            'transactions': []
-        }
-    })
-
-@app.route('/api/wallet/purchase', methods=['POST'])
-@token_required
-def purchase_coins(current_user):
-    data = request.get_json()
-    package = data.get('package', 'basic')
-    
-    packages = {
-        'basic': {'coins': 100, 'price': 9.99},
-        'premium': {'coins': 500, 'price': 39.99},
-        'vip': {'coins': 1000, 'price': 69.99}
+    if (currentUser) {
+        showElement('navigation');
+        showPage('home');
+    } else {
+        showPage('login');
     }
     
-    if package not in packages:
-        return jsonify({'success': False, 'error': {'message': 'Invalid package'}}), 400
+    // Start login reminder timer
+    if (!currentUser) {
+        startLoginTimer();
+    }
     
-    coins = packages[package]['coins']
-    current_user['walletBalance'] += coins
-    analytics['revenue'] += packages[package]['price']
+    // Login modal handlers
+    const loginModalLogin = document.getElementById("login-modal-login");
+    const loginModalContinue = document.getElementById("login-modal-continue");
     
-    return jsonify({
-        'success': True,
-        'data': {
-            'coins': coins,
-            'newBalance': current_user['walletBalance'],
-            'transactionId': str(uuid.uuid4())
-        }
-    })
-
-# Image upload with automatic compression for mobile optimization
-@app.route('/api/upload-image', methods=['POST'])
-def upload_image():
-    if 'image' not in request.files:
-        return jsonify({'success': False, 'error': {'message': 'Image missing'}}), 400
-
-    file = request.files['image']
-    try:
-        img = Image.open(file.stream)
-    except Exception:
-        return jsonify({'success': False, 'error': {'message': 'Invalid image'}}), 400
-
-    # Compress image for mobile optimization
-    img_io = BytesIO()
-    img.convert('RGB').save(img_io, 'JPEG', quality=70, optimize=True)
-    img_io.seek(0)
-
-    # Save to uploads directory
-    uploads_dir = os.path.join('backend', 'static', 'uploads')
-    os.makedirs(uploads_dir, exist_ok=True)
-    filename = f"{uuid.uuid4()}.jpg"
-    filepath = os.path.join(uploads_dir, filename)
-    with open(filepath, 'wb') as f:
-        f.write(img_io.read())
-
-    return jsonify({'success': True, 'data': {'url': f'/static/uploads/{filename}'}})
-
-# User preferences routes
-@app.route('/api/users/preferences', methods=['PUT'])
-@token_required
-def update_preferences(current_user):
-    data = request.get_json()
-    categories = data.get('categories', [])
-    if not isinstance(categories, list):
-        return jsonify({'success': False, 'error': {'message': 'Categories must be a list'}}), 400
-    current_user['preferredCategories'] = categories
-    return jsonify({'success': True, 'data': {'preferredCategories': categories}})
-
-# Users routes
-@app.route('/api/users/<user_id>', methods=['GET'])
-def get_user(user_id):
-    user = next((u for u in users.values() if u['id'] == user_id), None)
-    if not user:
-        return jsonify({'success': False, 'error': {'message': 'User not found'}}), 404
+    if (loginModalLogin) {
+        loginModalLogin.addEventListener("click", () => { 
+            cancelLoginTimer(); 
+            showPage("login"); 
+        });
+    }
     
-    return jsonify({
-        'success': True,
-        'data': {k: v for k, v in user.items() if k != 'passwordHash'}
-    })
-
-# Health check
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({
-        'status': 'ok',
-        'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0',
-        'users': len(users),
-        'streams': len([s for s in streams.values() if s['isLive']])
-    })
-
-# Analytics endpoint
-@app.route('/api/analytics', methods=['GET'])
-def get_analytics():
-    total_users = analytics['registrations'] + len(demo_users)
-    returning = len([u for u, logs in analytics['logins'].items() if len(logs) > 1])
-    retention = returning / total_users if total_users else 0
-    conversion = analytics['registrations'] / analytics['visitor_count'] if analytics['visitor_count'] else 0
-    return jsonify({
-        'success': True,
-        'data': {
-            'view_time': analytics['view_time'],
-            'retention_rate': retention,
-            'conversion_rate': conversion,
-            'gifts_sent': analytics['gifts_sent'],
-            'revenue': analytics['revenue']
-        }
-    })
-
-# SEO and sharing routes
-@app.route('/streams/<stream_id>')
-def share_stream(stream_id):
-    """Public sharing page for streams with SEO meta tags"""
-    stream = streams.get(stream_id)
-    if not stream:
-        abort(404)
-
-    url = request.url
-    return render_template('share.html', stream=stream, url=url)
-
-@app.route('/sitemap.xml')
-def sitemap():
-    """Generate sitemap for SEO optimization"""
-    pages = [url_for('index', _external=True)]
+    if (loginModalContinue) {
+        loginModalContinue.addEventListener("click", () => { 
+            cancelLoginTimer(); 
+            startLoginTimer(5); 
+        });
+    }
     
-    # Add all public stream pages to sitemap
-    for stream in streams.values():
-        if not stream.get('isPrivate', False):  # Only include public streams
-            pages.append(url_for('share_stream', stream_id=stream['id'], _external=True))
+    // Touch gestures for mobile
+    const feed = document.getElementById("feed");
+    if (feed) {
+        let touchStartY = 0;
+        feed.addEventListener("touchstart", e => { 
+            touchStartY = e.touches[0].clientY; 
+        });
+        feed.addEventListener("touchend", e => { 
+            const diff = e.changedTouches[0].clientY - touchStartY; 
+            if (diff > 50) { 
+                feed.scrollBy({top: -window.innerHeight, behavior: "smooth"}); 
+            } else if (diff < -50) { 
+                feed.scrollBy({top: window.innerHeight, behavior: "smooth"}); 
+            } 
+        });
+    }
 
-    xml_items = '\n'.join(f'<url><loc>{p}</loc></url>' for p in pages)
-    xml = f'''<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-{xml_items}
-</urlset>'''
+    // Login form
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email')?.value;
+            const password = document.getElementById('password')?.value;
+            const errorElement = document.getElementById('login-error');
+            
+            if (!email || !password) {
+                if (errorElement) {
+                    errorElement.textContent = 'Por favor, preencha todos os campos';
+                    errorElement.classList.remove('hidden');
+                }
+                return;
+            }
+            
+            try {
+                const response = await api.login(email, password);
+                localStorage.setItem('token', response.data.token);
+                currentUser = response.data.user;
+                
+                // Apply user's theme
+                const theme = { 
+                    mode: currentUser.theme || 'dark', 
+                    accentColor: currentUser.accentColor || defaultTheme.accentColor, 
+                    special: currentUser.specialTheme || '' 
+                };
+                applyTheme(theme);
+                storeTheme(theme);
+                
+                updateAuthUI();
+                cancelLoginTimer();
 
-    response = make_response(xml)
-    response.headers['Content-Type'] = 'application/xml'
-    return response
+                showPage('home');
+                showNotification('Login realizado com sucesso!', 'success');
+                
+                // Clear form
+                document.getElementById('email').value = '';
+                document.getElementById('password').value = '';
+                if (errorElement) errorElement.classList.add('hidden');
+                
+            } catch (error) {
+                if (errorElement) {
+                    errorElement.textContent = error.message;
+                    errorElement.classList.remove('hidden');
+                }
+            }
+        });
+    }
 
-# Root endpoint
-@app.route('/')
-def index():
-    analytics['visitor_count'] += 1
-    return jsonify({
-        'message': 'LiveHot.app Backend API',
-        'version': '1.0.0',
-        'endpoints': {
-            'auth': '/api/auth/*',
-            'streams': '/api/streams',
-            'gifts': '/api/gifts',
-            'wallet': '/api/wallet',
-            'users': '/api/users/*',
-            'health': '/api/health',
-            'analytics': '/api/analytics',
-            'sitemap': '/sitemap.xml'
-        },
-        'demo_credentials': {
-            'streamer': {'email': 'demo@livehot.app', 'password': 'password123'},
-            'viewer': {'email': 'viewer@livehot.app', 'password': 'password123'}
-        }
-    })
+    // Register form
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+        registerForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('reg-email')?.value;
+            const password = document.getElementById('reg-password')?.value;
+            const username = document.getElementById('reg-username')?.value;
+            const displayName = document.getElementById('reg-display-name')?.value;
+            const errorElement = document.getElementById('register-error');
+            
+            if (!email || !password || !username || !displayName) {
+                if (errorElement) {
+                    errorElement.textContent = 'Por favor, preencha todos os campos';
+                    errorElement.classList.remove('hidden');
+                }
+                return;
+            }
+            
+            try {
+                const response = await api.register(email, password, username, displayName);
+                localStorage.setItem('token', response.data.token);
+                currentUser = response.data.user;
+                
+                updateAuthUI();
+                showPage('home');
+                showNotification('Registro realizado com sucesso!', 'success');
+                
+                // Clear form
+                registerForm.reset();
+                if (errorElement) errorElement.classList.add('hidden');
+                
+            } catch (error) {
+                if (errorElement) {
+                    errorElement.textContent = error.message;
+                    errorElement.classList.remove('hidden');
+                }
+            }
+        });
+    }
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    // Media controls
+    const cameraBtn = document.getElementById('camera-btn');
+    const micBtn = document.getElementById('mic-btn');
+    const startStreamBtn = document.getElementById('start-stream-btn');
+    
+    if (cameraBtn) cameraBtn.addEventListener('click', toggleCamera);
+    if (micBtn) micBtn.addEventListener('click', toggleMic);
+    if (startStreamBtn) startStreamBtn.addEventListener('click', startStreamBroadcast);
+
+    // Profile controls
+    const saveProfileBtn = document.getElementById('save-profile');
+    const avatarUrlInput = document.getElementById('avatar-url');
+    
+    if (saveProfileBtn) saveProfileBtn.addEventListener('click', saveProfile);
+    if (avatarUrlInput) {
+        avatarUrlInput.addEventListener('input', e => {
+            const profileAvatar = document.getElementById('profile-avatar');
+            if (profileAvatar) {
+                profileAvatar.src = e.target.value;
+            }
+        });
+    }
+});
+
+// Make functions global for onclick handlers
+window.showPage = showPage;
+window.fillDemoCredentials = fillDemoCredentials;
+window.toggleAuth = toggleAuth;
+window.purchaseCoins = purchaseCoins;
+window.saveProfile = saveProfile;
+window.logout = logout;
+window.loadStreams = loadStreams;
+window.openStream = openStream;
