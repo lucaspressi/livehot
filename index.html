@@ -140,7 +140,7 @@
         }
     </style>
 </head>
-<body class="min-h-screen pb-16" id="app-body">
+<body class="min-h-screen" id="app-body">
     <!-- Loading Screen -->
     <div id="loading" class="fixed inset-0 bg-base flex items-center justify-center z-50">
         <div class="text-white text-center">
@@ -378,45 +378,6 @@
         </div>
     </div>
 
-    <!-- Navigation -->
-    <nav id="navigation" class="fixed bottom-0 left-0 right-0 bg-base border-t border-slate-700 hidden" role="navigation" aria-label="Navegação principal">
-        <div class="flex justify-around items-center py-2">
-            <button onclick="showPage('home')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Página inicial">
-                <span class="text-xl" aria-hidden="true">🏠</span>
-                <span class="text-xs mt-1">Home</span>
-            </button>
-            
-            <button onclick="showPage('search')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Buscar">
-                <span class="text-xl" aria-hidden="true">🔍</span>
-                <span class="text-xs mt-1">Buscar</span>
-            </button>
-            
-            <button id="broadcast-nav" onclick="showPage('broadcast')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white hidden" aria-label="Transmitir">
-                <span class="text-xl" aria-hidden="true">📹</span>
-                <span class="text-xs mt-1">Transmitir</span>
-            </button>
-            
-            <button onclick="showPage('wallet')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Carteira">
-                <span class="text-xl" aria-hidden="true">💰</span>
-                <span class="text-xs mt-1">Carteira</span>
-            </button>
-
-            <button onclick="showPage('profile')" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white">
-                <span class="text-xl">⚙️</span>
-                <span class="text-xs mt-1">Perfil</span>
-            </button>
-            
-            <button id="auth-nav" onclick="toggleAuth()" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Autenticação">
-                <span class="text-xl" aria-hidden="true">👤</span>
-                <span id="auth-text" class="text-xs mt-1">Login</span>
-            </button>
-
-            <button id="contrast-toggle" onclick="toggleContrast()" class="nav-btn flex flex-col items-center p-2 text-slate-400 hover:text-white" aria-label="Alternar alto contraste">
-                <span class="text-xl" aria-hidden="true">🌗</span>
-                <span class="text-xs mt-1">Contraste</span>
-            </button>
-        </div>
-    </nav>
 
     <script src="config.js"></script>
     <script>

@@ -271,19 +271,22 @@ function showPage(pageId) {
         }
     }
     
-    // Update navigation
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('text-white');
-        btn.classList.add('text-slate-400');
-        btn.setAttribute('aria-selected', 'false');
-    });
-    
-    // Highlight current nav button
-    const currentNavBtn = document.querySelector(`[onclick="showPage('${pageId}')"]`);
-    if (currentNavBtn) {
-        currentNavBtn.classList.remove('text-slate-400');
-        currentNavBtn.classList.add('text-white');
-        currentNavBtn.setAttribute('aria-selected', 'true');
+    // Update navigation if it exists
+    const navButtons = document.querySelectorAll('.nav-btn');
+    if (navButtons.length > 0) {
+        navButtons.forEach(btn => {
+            btn.classList.remove('text-white');
+            btn.classList.add('text-slate-400');
+            btn.setAttribute('aria-selected', 'false');
+        });
+        
+        // Highlight current nav button
+        const currentNavBtn = document.querySelector(`[onclick="showPage('${pageId}')"]`);
+        if (currentNavBtn) {
+            currentNavBtn.classList.remove('text-slate-400');
+            currentNavBtn.classList.add('text-white');
+            currentNavBtn.setAttribute('aria-selected', 'true');
+        }
     }
     
     // Announce page change
