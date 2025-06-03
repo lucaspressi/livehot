@@ -18,3 +18,7 @@ dist/
 *.pyc
 .venv
 
+
+# React build output
+build/
+**/build/

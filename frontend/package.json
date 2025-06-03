@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --outDir build",
     "preview": "vite preview",
-    "start": "vite"
+    "start": "vite",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@livekit/client": "^2.0.0",
