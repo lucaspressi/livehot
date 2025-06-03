@@ -8,9 +8,15 @@ import hashlib
 import base64
 import hmac
 from functools import wraps
+import jwt
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'livehot-secret-key-change-in-production'
+
+# LiveKit configuration for scalable streaming
+LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'wss://livekit.example.com')
+LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
+LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')
 
 # Enable CORS for all routes with specific configuration
 CORS(app, 
@@ -59,6 +65,24 @@ def verify_token(token, secret):
         return payload
     except:
         return None
+
+# Generate LiveKit token for publishing or viewing
+def generate_livekit_token(room, identity, name, can_publish=False, ttl_seconds=3600):
+    now = datetime.utcnow()
+    payload = {
+        'iss': LIVEKIT_API_KEY,
+        'sub': identity,
+        'name': name,
+        'nbf': int(now.timestamp()),
+        'exp': int((now + timedelta(seconds=ttl_seconds)).timestamp()),
+        'video': {
+            'roomJoin': True,
+            'room': room,
+            'canPublish': can_publish,
+            'canSubscribe': True
+        }
+    }
+    return jwt.encode(payload, LIVEKIT_API_SECRET, algorithm='HS256')
 
 # In-memory storage
 users = {}
@@ -309,10 +333,40 @@ def stop_stream(current_user, stream_id):
     
     stream['isLive'] = False
     stream['endedAt'] = datetime.now().isoformat()
-    
+
     return jsonify({
         'success': True,
         'data': stream
+    })
+
+# Broadcast route - generates LiveKit token and returns connection info
+@app.route('/api/broadcast/<stream_id>', methods=['POST'])
+@token_required
+def broadcast_stream(current_user, stream_id):
+    stream = streams.get(stream_id)
+    if not stream:
+        return jsonify({'success': False, 'error': {'message': 'Stream not found'}}), 404
+
+    is_owner = stream['streamerId'] == current_user['id']
+    if is_owner and not stream['isLive']:
+        stream['isLive'] = True
+        stream['startedAt'] = datetime.now().isoformat()
+
+    token = generate_livekit_token(
+        stream['livekitRoomName'],
+        identity=current_user['id'],
+        name=current_user['displayName'],
+        can_publish=is_owner
+    )
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'url': LIVEKIT_URL,
+            'room': stream['livekitRoomName'],
+            'token': token,
+            'stream': stream
+        }
     })
 
 @app.route('/api/streams/<stream_id>/update', methods=['PUT'])
