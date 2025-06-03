@@ -8,20 +8,247 @@ Este package contém a plataforma LiveHot.app completa e funcional, corrigida e 
 
 ```
 livehot-package/
-├── backend/                    # Backend Flask completo
-│   └── main.py                # API principal com todas as funcionalidades
-├── index.html                 # Frontend HTML/CSS/JS
-├── app.js                     # JavaScript da aplicação
-├── src/
-│   └── assets/
-│       ├── images/            # Imagens do app (logo, placeholders)
-│       ├── icons/             # Ícones SVG customizados
-│       └── sounds/            # Sons de notificação e efeitos
-├── requirements.txt           # Dependências Python
-├── relatorio_correcao_final.md # Relatório completo da correção
-├── diagnostico_problemas.md   # Diagnóstico dos problemas originais
-└── README.md                  # Este arquivo
+├── 📁 backend/                         # Backend Flask completo
+│   ├── 📄 main.py                     # Ponto de entrada da API
+│   ├── 📄 app.py                      # Configuração da aplicação Flask
+│   ├── 📄 requirements.txt            # Dependências Python
+│   ├── 📄 .env.example               # Template de variáveis de ambiente
+│   ├── 📄 Dockerfile                 # Container do backend
+│   │
+│   ├── 📁 config/                     # Configurações
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 database.py            # Configuração do banco
+│   │   ├── 📄 redis.py               # Configuração Redis
+│   │   ├── 📄 livekit.py             # Configuração LiveKit
+│   │   └── 📄 settings.py            # Configurações gerais
+│   │
+│   ├── 📁 models/                     # Modelos de dados
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 user.py                # Modelo de usuário
+│   │   ├── 📄 stream.py              # Modelo de stream
+│   │   ├── 📄 gift.py                # Modelo de presentes
+│   │   ├── 📄 wallet.py              # Modelo de carteira
+│   │   └── 📄 chat.py                # Modelo de chat
+│   │
+│   ├── 📁 routes/                     # Rotas da API
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 auth.py                # Rotas de autenticação
+│   │   ├── 📄 streams.py             # Rotas de streams
+│   │   ├── 📄 gifts.py               # Rotas de presentes
+│   │   ├── 📄 wallet.py              # Rotas de carteira
+│   │   └── 📄 chat.py                # Rotas de chat
+│   │
+│   ├── 📁 services/                   # Lógica de negócio
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 auth_service.py        # Serviço de autenticação
+│   │   ├── 📄 stream_service.py      # Serviço de streams
+│   │   ├── 📄 gift_service.py        # Serviço de presentes
+│   │   ├── 📄 wallet_service.py      # Serviço de carteira
+│   │   ├── 📄 chat_service.py        # Serviço de chat
+│   │   └── 📄 notification_service.py # Serviço de notificações
+│   │
+│   ├── 📁 utils/                      # Utilitários
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 decorators.py          # Decorators (auth, etc.)
+│   │   ├── 📄 validators.py          # Validações
+│   │   ├── 📄 helpers.py             # Funções auxiliares
+│   │   ├── 📄 exceptions.py          # Exceções customizadas
+│   │   └── 📄 constants.py           # Constantes
+│   │
+│   ├── 📁 websocket/                  # WebSocket handlers
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 chat_handler.py        # Handler de chat
+│   │   ├── 📄 stream_handler.py      # Handler de streams
+│   │   └── 📄 events.py              # Eventos WebSocket
+│   │
+│   ├── 📁 migrations/                 # Migrações do banco
+│   │   └── 📄 ...
+│   │
+│   └── 📁 tests/                      # Testes do backend
+│       ├── 📄 __init__.py
+│       ├── 📄 test_auth.py
+│       ├── 📄 test_streams.py
+│       └── 📄 test_gifts.py
+│
+├── 📁 frontend/                        # Frontend React/HTML completo
+│   ├── 📁 public/                     # Arquivos públicos
+│   │   ├── 📄 index.html             # HTML principal
+│   │   ├── 📄 manifest.json          # PWA manifest
+│   │   ├── 📄 service-worker.js      # Service Worker
+│   │   ├── 📄 robots.txt             # SEO
+│   │   └── 📁 icons/                 # Ícones PWA
+│   │       ├── 📄 icon-16x16.png
+│   │       ├── 📄 icon-32x32.png
+│   │       ├── 📄 icon-192x192.png
+│   │       └── 📄 icon-512x512.png
+│   │
+│   ├── 📁 src/                        # Código fonte React
+│   │   ├── 📄 index.js               # Entry point
+│   │   ├── 📄 App.js                 # Componente principal
+│   │   ├── 📄 index.css              # Estilos globais
+│   │   │
+│   │   ├── 📁 components/             # Componentes React
+│   │   │   ├── 📁 common/            # Componentes reutilizáveis
+│   │   │   │   ├── 📄 Button.js
+│   │   │   │   ├── 📄 Modal.js
+│   │   │   │   ├── 📄 LoadingSpinner.js
+│   │   │   │   └── 📄 Toast.js
+│   │   │   │
+│   │   │   ├── 📁 feed/              # Componentes do feed
+│   │   │   │   ├── 📄 VideoFeed.js
+│   │   │   │   ├── 📄 VideoPlayer.js
+│   │   │   │   ├── 📄 VideoOverlay.js
+│   │   │   │   └── 📄 SwipeNavigation.js
+│   │   │   │
+│   │   │   ├── 📁 chat/              # Componentes de chat
+│   │   │   │   ├── 📄 ChatOverlay.js
+│   │   │   │   ├── 📄 ChatMessage.js
+│   │   │   │   └── 📄 ChatInput.js
+│   │   │   │
+│   │   │   ├── 📁 gifts/             # Componentes de presentes
+│   │   │   │   ├── 📄 GiftModal.js
+│   │   │   │   ├── 📄 GiftAnimation.js
+│   │   │   │   └── 📄 GiftButton.js
+│   │   │   │
+│   │   │   └── 📁 auth/              # Componentes de auth
+│   │   │       ├── 📄 LoginModal.js
+│   │   │       ├── 📄 RegisterModal.js
+│   │   │       └── 📄 ProfilePage.js
+│   │   │
+│   │   ├── 📁 hooks/                  # Hooks customizados
+│   │   │   ├── 📄 useAuth.js
+│   │   │   ├── 📄 useStreams.js
+│   │   │   ├── 📄 useChat.js
+│   │   │   ├── 📄 useGifts.js
+│   │   │   └── 📄 useSwipe.js
+│   │   │
+│   │   ├── 📁 services/               # Serviços do frontend
+│   │   │   ├── 📄 api.js             # Cliente da API
+│   │   │   ├── 📄 websocket.js       # Cliente WebSocket
+│   │   │   ├── 📄 livekit.js         # Cliente LiveKit
+│   │   │   ├── 📄 storage.js         # LocalStorage
+│   │   │   └── 📄 analytics.js       # Analytics
+│   │   │
+│   │   ├── 📁 store/                  # Estado global (Redux)
+│   │   │   ├── 📄 index.js           # Store setup
+│   │   │   ├── 📄 authSlice.js       # Estado de auth
+│   │   │   ├── 📄 streamSlice.js     # Estado de streams
+│   │   │   ├── 📄 chatSlice.js       # Estado de chat
+│   │   │   └── 📄 uiSlice.js         # Estado da UI
+│   │   │
+│   │   ├── 📁 utils/                  # Utilitários
+│   │   │   ├── 📄 constants.js       # Constantes
+│   │   │   ├── 📄 formatters.js      # Formatadores
+│   │   │   ├── 📄 validators.js      # Validações
+│   │   │   ├── 📄 gestures.js        # Gestos touch
+│   │   │   └── 📄 permissions.js     # Permissões
+│   │   │
+│   │   ├── 📁 styles/                 # Sistema de estilos
+│   │   │   ├── 📄 globals.css        # Reset global
+│   │   │   ├── 📄 components.css     # Classes reutilizáveis
+│   │   │   ├── 📄 themes.css         # Temas dark/light
+│   │   │   └── 📄 animations.css     # Animações
+│   │   │
+│   │   ├── 📁 assets/                 # Assets estáticos
+│   │   │   ├── 📁 images/            # Imagens
+│   │   │   │   ├── 📄 logo.png
+│   │   │   │   ├── 📄 placeholder.jpg
+│   │   │   │   └── 📄 avatar-default.png
+│   │   │   │
+│   │   │   ├── 📁 icons/             # Ícones SVG
+│   │   │   │   ├── 📄 gift.svg
+│   │   │   │   ├── 📄 heart.svg
+│   │   │   │   ├── 📄 share.svg
+│   │   │   │   └── 📄 chat.svg
+│   │   │   │
+│   │   │   └── 📁 sounds/            # Sons e efeitos
+│   │   │       ├── 📄 notification.mp3
+│   │   │       ├── 📄 gift-sent.mp3
+│   │   │       └── 📄 new-message.mp3
+│   │   │
+│   │   └── 📁 config/                 # Configurações
+│   │       ├── 📄 api.js             # Endpoints da API
+│   │       ├── 📄 routes.js          # Rotas do app
+│   │       └── 📄 environment.js     # Variáveis de ambiente
+│   │
+│   ├── 📄 package.json               # Dependências Node.js
+│   ├── 📄 package-lock.json          # Lock das dependências
+│   ├── 📄 .env.example              # Template de env vars
+│   ├── 📄 Dockerfile                # Container do frontend
+│   ├── 📄 .dockerignore             # Arquivos ignorados
+│   ├── 📄 nginx.conf                # Configuração Nginx
+│   ├── 📄 docker-entrypoint.sh      # Script de entrada
+│   ├── 📄 tailwind.config.js        # Configuração Tailwind
+│   └── 📄 webpack.config.js         # Configuração Webpack
+│
+├── 📁 docs/                           # Documentação
+│   ├── 📄 README.md                  # Documentação principal
+│   ├── 📄 API.md                     # Documentação da API
+│   ├── 📄 DEPLOY.md                  # Guia de deploy
+│   ├── 📄 DEVELOPMENT.md             # Guia de desenvolvimento
+│   └── 📁 images/                    # Imagens da documentação
+│
+├── 📁 docker/                         # Configurações Docker
+│   ├── 📄 docker-compose.yml         # Compose principal
+│   ├── 📄 docker-compose.dev.yml     # Compose desenvolvimento
+│   ├── 📄 docker-compose.prod.yml    # Compose produção
+│   └── 📁 nginx/                     # Configurações nginx
+│       ├── 📄 default.conf
+│       └── 📄 ssl.conf
+│
+├── 📁 scripts/                        # Scripts utilitários
+│   ├── 📄 setup.sh                  # Setup do ambiente
+│   ├── 📄 deploy.sh                 # Script de deploy
+│   ├── 📄 backup.sh                 # Script de backup
+│   └── 📄 migrate.py                # Script de migração
+│
+├── 📁 infra/                          # Infraestrutura
+│   ├── 📁 kubernetes/                # Configs K8s
+│   │   ├── 📄 deployment.yaml
+│   │   ├── 📄 service.yaml
+│   │   └── 📄 ingress.yaml
+│   │
+│   ├── 📁 terraform/                 # IaC Terraform
+│   │   ├── 📄 main.tf
+│   │   ├── 📄 variables.tf
+│   │   └── 📄 outputs.tf
+│   │
+│   └── 📁 monitoring/                # Monitoramento
+│       ├── 📄 prometheus.yml
+│       ├── 📄 grafana-dashboard.json
+│       └── 📄 alerts.yml
+│
+├── 📁 tests/                          # Testes E2E e integração
+│   ├── 📁 e2e/                      # Testes end-to-end
+│   │   ├── 📄 auth.test.js
+│   │   ├── 📄 streaming.test.js
+│   │   └── 📄 gifts.test.js
+│   │
+│   └── 📁 integration/               # Testes de integração
+│       ├── 📄 api.test.js
+│       └── 📄 websocket.test.js
+│
+├── 📄 .gitignore                     # Git ignore
+├── 📄 .env.example                   # Template de variáveis globais
+├── 📄 docker-compose.yml             # Compose principal
+├── 📄 Makefile                       # Comandos make
+├── 📄 README.md                      # Documentação principal
+├── 📄 LICENSE                        # Licença do projeto
+├── 📄 CHANGELOG.md                   # Log de mudanças
+│
+└── 📁 legacy/                         # Arquivos antigos (para migração)
+    ├── 📄 index.html                 # HTML antigo
+    ├── 📄 app.js                     # JS antigo
+    ├── 📄 relatorio_correcao_final.md
+    └── 📄 diagnostico_problemas.md
 ```
+
+### 1.2 Arquivos de Configuração
+
+- **package.json** - Configurar scripts e dependências
+- **webpack.config.js** - Configurações de build customizadas
+- **tailwind.config.js** - Configuração do Tailwind CSS
+- **.env.example** - Template de variáveis de ambiente
 
 ## 🚀 **URLs Funcionais (Já Deployadas)**
 
