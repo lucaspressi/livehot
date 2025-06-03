@@ -42,7 +42,7 @@ livehot-package/
 
 1. **Instalar dependências:**
 ```bash
-pip install -r requirements.txt
+poetry install
 ```
 
 2. **Configurar variáveis de ambiente:**
@@ -53,7 +53,7 @@ cp .env.example .env
 3. **Executar servidor:**
 ```bash
 cd backend
-python main.py
+poetry run python main.py
 ```
 As variáveis definidas no arquivo `.env` serão carregadas automaticamente. Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` conforme necessário.
 
