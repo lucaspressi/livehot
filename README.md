@@ -50,6 +50,15 @@ poetry install
 cp .env.example .env
 # Edite o arquivo .env com suas chaves
 ```
+
+Se estiver executando o frontend fora do Docker (ex.: com `python -m http.server`),
+crie um arquivo `config.js` na raiz do projeto definindo a URL da API:
+
+```javascript
+// config.js
+window.API_BASE_URL = 'http://localhost:5000/api';
+```
+
 3. **Executar servidor:**
 ```bash
 cd backend
