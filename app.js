@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'https://477h9ikcqnn3.manus.space/api';
+const API_BASE_URL = window.API_BASE_URL || '/api';
 
 // Global state
 let currentUser = null;
