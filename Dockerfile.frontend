@@ -2,6 +2,9 @@ FROM nginx:alpine
 
 COPY index.html /usr/share/nginx/html/index.html
 COPY app.js /usr/share/nginx/html/app.js
+COPY manifest.json /usr/share/nginx/html/manifest.json
+COPY service-worker.js /usr/share/nginx/html/service-worker.js
+COPY icons /usr/share/nginx/html/icons
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN sed -i 's/\r$//' /docker-entrypoint.sh && \
     chmod +x /docker-entrypoint.sh
