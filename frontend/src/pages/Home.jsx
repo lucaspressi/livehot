@@ -1,50 +1,32 @@
-import React, { useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import VideoFeed from '../components/feed/VideoFeed';
-import ChatBox from '../components/chat/ChatBox';
-import GiftButton from '../components/gifts/GiftButton';
-import LoadingSpinner from '../components/common/LoadingSpinner';
-import useAuth from '../hooks/useAuth';
-import useStreams from '../hooks/useStreams';
+import React from 'react';
+import { Routes, Route } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import Home from './pages/Home';
+import WalletPage from './pages/WalletPage';
+import BroadcastPage from './pages/BroadcastPage';
+import LoginModal from './components/auth/LoginModal';
+import RegisterModal from './components/auth/RegisterModal';
+import Toast from './components/common/Toast';
 
-function Home() {
-  const { user } = useAuth();
-  const { streams, loading, fetchStreams } = useStreams();
-
-  useEffect(() => {
-    fetchStreams();
-  }, [fetchStreams]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="large" />
-      </div>
-    );
-  }
-
-  const recipientId = streams[0]?.streamerId || '';
+function App() {
+  const { showLogin, showRegister, notifications } = useSelector(state => state.ui);
 
   return (
-    <div className="min-h-screen bg-black relative">
-      <VideoFeed videos={streams} />
+    <div className="App">
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/broadcast/:id" element={<BroadcastPage />} />
+      </Routes>
 
-      <div className="absolute top-0 right-0 h-full w-80 pointer-events-none">
-        <ChatBox />
-      </div>
+      {showLogin && <LoginModal />}
+      {showRegister && <RegisterModal />}
 
-      <div className="absolute bottom-20 right-4 flex flex-col gap-4">
-        <GiftButton recipientId={recipientId} />
-      </div>
-
-      <div className="absolute top-4 left-4 z-10 text-white flex gap-4">
-        {user ? `Olá, ${user.displayName}` : 'LiveHot'}
-        <Link to="/wallet" className="underline">
-          Carteira
-        </Link>
-      </div>
+      {notifications.map(n => (
+        <Toast key={n.id} {...n} />
+      ))}
     </div>
   );
 }
 
-export default Home;
+export default App;

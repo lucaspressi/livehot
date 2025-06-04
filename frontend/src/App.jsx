@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import Home from './pages/Home';
 import WalletPage from './pages/WalletPage';
 import BroadcastPage from './pages/BroadcastPage';
+import StreamPage from './pages/StreamPage';
 import LoginModal from './components/auth/LoginModal';
 import RegisterModal from './components/auth/RegisterModal';
 import Toast from './components/common/Toast';
@@ -17,6 +18,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/broadcast/:id" element={<BroadcastPage />} />
+        <Route path="/stream/:id" element={<StreamPage />} />
       </Routes>
 
       {showLogin && <LoginModal />}
