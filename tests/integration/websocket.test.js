@@ -1,0 +1,1 @@
+// Placeholder integration WebSocket test

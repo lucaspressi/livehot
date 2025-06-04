@@ -1,0 +1,14 @@
+version: '3'
+services:
+  backend:
+    image: livehot/backend:latest
+    environment:
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+  frontend:
+    image: livehot/frontend:latest
+    environment:
+      - API_BASE_URL=/api
+    depends_on:
+      - backend
