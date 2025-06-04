@@ -2,6 +2,8 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Home from './pages/Home';
+import WalletPage from './pages/WalletPage';
+import BroadcastPage from './pages/BroadcastPage';
 import StreamPage from './pages/StreamPage';
 import LoginModal from './components/auth/LoginModal';
 import RegisterModal from './components/auth/RegisterModal';
@@ -12,19 +14,18 @@ function App() {
 
   return (
     <div className="App">
-      {/* Rotas principais */}
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/broadcast/:id" element={<BroadcastPage />} />
         <Route path="/stream/:id" element={<StreamPage />} />
       </Routes>
 
-      {/* Modais globais */}
       {showLogin && <LoginModal />}
       {showRegister && <RegisterModal />}
 
-      {/* Notificações */}
-      {notifications.map(notification => (
-        <Toast key={notification.id} {...notification} />
+      {notifications.map(n => (
+        <Toast key={n.id} {...n} />
       ))}
     </div>
   );
