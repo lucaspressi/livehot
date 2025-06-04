@@ -2,13 +2,13 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Home from './pages/Home';
+import StreamPage from './pages/StreamPage';
 import LoginModal from './components/auth/LoginModal';
 import RegisterModal from './components/auth/RegisterModal';
 import Toast from './components/common/Toast';
 
 function App() {
-  const { showLogin, showRegister } = useSelector(state => state.ui);
-  const { notifications } = useSelector(state => state.ui);
+  const { showLogin, showRegister, notifications } = useSelector(state => state.ui);
 
   return (
     <div className="App">
