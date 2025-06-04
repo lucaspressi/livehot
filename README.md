@@ -89,31 +89,31 @@ livehot-package/
 │   │   │
 │   │   ├── 📁 components/             # Componentes React
 │   │   │   ├── 📁 common/            # Componentes reutilizáveis
-│   │   │   │   ├── 📄 Button.js
-│   │   │   │   ├── 📄 Modal.js
+│   │   │   │   ├── 📄 Button.jsx
+│   │   │   │   ├── 📄 Modal.jsx
 │   │   │   │   ├── 📄 LoadingSpinner.js
 │   │   │   │   └── 📄 Toast.js
 │   │   │   │
 │   │   │   ├── 📁 feed/              # Componentes do feed
-│   │   │   │   ├── 📄 VideoFeed.js
-│   │   │   │   ├── 📄 VideoPlayer.js
-│   │   │   │   ├── 📄 VideoOverlay.js
-│   │   │   │   └── 📄 SwipeNavigation.js
+│   │   │   │   ├── 📄 VideoFeed.jsx
+│   │   │   │   ├── 📄 VideoPlayer.jsx
+│   │   │   │   ├── 📄 VideoOverlay.jsx
+│   │   │   │   └── 📄 SwipeNavigation.jsx
 │   │   │   │
 │   │   │   ├── 📁 chat/              # Componentes de chat
-│   │   │   │   ├── 📄 ChatOverlay.js
+│   │   │   │   ├── 📄 ChatOverlay.jsx
 │   │   │   │   ├── 📄 ChatMessage.js
 │   │   │   │   └── 📄 ChatInput.js
 │   │   │   │
 │   │   │   ├── 📁 gifts/             # Componentes de presentes
-│   │   │   │   ├── 📄 GiftModal.js
-│   │   │   │   ├── 📄 GiftAnimation.js
-│   │   │   │   └── 📄 GiftButton.js
+│   │   │   │   ├── 📄 GiftModal.jsx
+│   │   │   │   ├── 📄 GiftAnimation.jsx
+│   │   │   │   └── 📄 GiftButton.jsx
 │   │   │   │
 │   │   │   └── 📁 auth/              # Componentes de auth
 │   │   │       ├── 📄 LoginModal.js
 │   │   │       ├── 📄 RegisterModal.js
-│   │   │       └── 📄 ProfilePage.js
+│   │   │       └── 📄 ProfilePage.jsx
 │   │   │
 │   │   ├── 📁 hooks/                  # Hooks customizados
 │   │   │   ├── 📄 useAuth.js
