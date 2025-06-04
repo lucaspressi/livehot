@@ -6,7 +6,7 @@ import {
   RemoteParticipant,
   LocalParticipant,
   Track
-} from '@livekit/client';
+} from 'livekit-client';
 
 // Estado global da sala
 let room = null;

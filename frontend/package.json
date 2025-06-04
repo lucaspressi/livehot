@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@livekit/client": "^2.0.0",
+    "livekit-client": "^2.13.3",
     "@reduxjs/toolkit": "^1.9.5",
     "axios": "^1.6.0",
     "framer-motion": "^10.12.16",
