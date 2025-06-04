@@ -5,7 +5,7 @@ import ChatBox from '../components/chat/ChatBox';
 import GiftButton from '../components/gifts/GiftButton';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import useAuth from '../hooks/useAuth';
-import useStreams from '../hooks/useStreams';
+import { useStreams } from '../hooks/useStreams'; // ✅ conflito resolvido
 
 function Home() {
   const dispatch = useDispatch();
