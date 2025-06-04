@@ -3,6 +3,8 @@ import { Routes, Route } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Home from './pages/Home';
 import StreamPage from './pages/StreamPage';
+import WalletPage from './pages/WalletPage';
+import BroadcastPage from './pages/BroadcastPage';
 import LoginModal from './components/auth/LoginModal';
 import RegisterModal from './components/auth/RegisterModal';
 import Toast from './components/common/Toast';
