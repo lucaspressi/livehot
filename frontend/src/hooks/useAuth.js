@@ -37,5 +37,7 @@ export default function useAuth() {
     localStorage.removeItem('token');
   };
 
-  return { user, token, login, register, logout };
+  const isAuthenticated = !!user;
+
+  return { user, token, login, register, logout, isAuthenticated };
 }

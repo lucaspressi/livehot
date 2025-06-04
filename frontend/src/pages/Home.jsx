@@ -4,7 +4,7 @@ import VideoFeed from '../components/feed/VideoFeed';
 import ChatBox from '../components/chat/ChatBox';
 import GiftButton from '../components/gifts/GiftButton';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { useAuth } from '../hooks/useAuth';
+import useAuth from '../hooks/useAuth';
 import { useStreams } from '../hooks/useStreams';
 
 function Home() {
