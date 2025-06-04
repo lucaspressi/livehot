@@ -1,6 +1,6 @@
 install:
 pip install -r requirements.txt
 run-backend:
-python backend/main.py
+    poetry run python -m backend.main
 run-frontend:
 npm start --prefix frontend
