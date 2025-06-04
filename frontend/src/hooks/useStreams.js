@@ -3,11 +3,17 @@ import API from '../services/api';
 
 export default function useStreams() {
   const [streams, setStreams] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const fetchStreams = useCallback(async (params = {}) => {
-    const res = await API.get('/streams', { params });
-    setStreams(res.data.data.streams);
-    return res.data.data;
+    setLoading(true);
+    try {
+      const res = await API.get('/streams', { params });
+      setStreams(res.data.data.streams);
+      return res.data.data;
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const getStream = useCallback(async (id) => {
@@ -32,6 +38,7 @@ export default function useStreams() {
 
   return {
     streams,
+    loading,
     fetchStreams,
     getStream,
     createStream,
