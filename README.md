@@ -294,7 +294,7 @@ window.API_BASE_URL = 'http://localhost:5000/api';
 3. **Executar servidor:**
 ```bash
 cd backend
-poetry run python main.py
+poetry run python -m backend.main
 ```
 As variáveis definidas no arquivo `.env` serão carregadas automaticamente. Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` conforme necessário. Para uso local, defina `LIVEKIT_URL` como `ws://localhost:7880`.
 
