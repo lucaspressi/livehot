@@ -34,7 +34,13 @@ const initialState = {
 
 const uiSlice = createSlice({
   name: 'ui',
-  initialState,
+  initialState: {
+    loading: false,
+    error: null,
+    showLogin: false,
+    showRegister: false,
+    notifications: [],
+  },
   reducers: {
     // Modal actions
     setShowLogin: (state, action) => {
@@ -160,6 +166,20 @@ const uiSlice = createSlice({
         duration: 4000,
       };
       state.notifications.push(notification);
+    },
+    setShowLogin(state, action) {
+      state.showLogin = action.payload;
+    },
+    setShowRegister(state, action) {
+      state.showRegister = action.payload;
+    },
+    addNotification(state, action) {
+      state.notifications.push(action.payload);
+    },
+    removeNotification(state, action) {
+      state.notifications = state.notifications.filter(
+        (n) => n.id !== action.payload
+      );
     },
   },
 });

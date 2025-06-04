@@ -1,4 +1,7 @@
+import os
+
 class Config:
-    SECRET_KEY = 'livehot-secret-key-change-in-production'
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'livehot-secret-key')
+    LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'wss://livekit.example.com')
+    LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
+    LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')

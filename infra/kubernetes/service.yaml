@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: livehot
+spec:
+  selector:
+    app: livehot
+  ports:
+  - port: 80
+    targetPort: 80

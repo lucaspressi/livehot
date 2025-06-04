@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livehot
+spec:
+  selector:
+    matchLabels:
+      app: livehot
+  template:
+    metadata:
+      labels:
+        app: livehot
+    spec:
+      containers:
+      - name: livehot
+        image: livehot/latest

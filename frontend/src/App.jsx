@@ -16,13 +16,13 @@ function App() {
 
   return (
     <div className="App">
-      {/* Rotas principais */}
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/broadcast/:id" element={<BroadcastPage />} />
         <Route path="/stream/:id" element={<StreamPage />} />
       </Routes>
 
-      {/* Modais globais */}
       {showLogin && <LoginModal />}
       {showRegister && <RegisterModal />}
 
