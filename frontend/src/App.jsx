@@ -2,29 +2,28 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Home from './pages/Home';
+import WalletPage from './pages/WalletPage';
+import BroadcastPage from './pages/BroadcastPage';
 import LoginModal from './components/auth/LoginModal';
 import RegisterModal from './components/auth/RegisterModal';
 import Toast from './components/common/Toast';
 
 function App() {
-  const { showLogin, showRegister } = useSelector(state => state.ui);
-  const { notifications } = useSelector(state => state.ui);
+  const { showLogin, showRegister, notifications } = useSelector(state => state.ui);
 
   return (
     <div className="App">
-      {/* Rotas principais */}
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/stream/:id" element={<StreamPage />} />
+        <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/broadcast/:id" element={<BroadcastPage />} />
       </Routes>
 
-      {/* Modais globais */}
       {showLogin && <LoginModal />}
       {showRegister && <RegisterModal />}
 
-      {/* Notificações */}
-      {notifications.map(notification => (
-        <Toast key={notification.id} {...notification} />
+      {notifications.map(n => (
+        <Toast key={n.id} {...n} />
       ))}
     </div>
   );
