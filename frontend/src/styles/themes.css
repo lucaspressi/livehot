@@ -1,0 +1,16 @@
+/* Light and Dark theme support */
+
+body {
+  background-color: var(--bg-color, #f8f8f8);
+  color: var(--text-color, #333);
+}
+
+body.light {
+  --bg-color: #f8f8f8;
+  --text-color: #333;
+}
+
+body.dark {
+  --bg-color: #1a202c;
+  --text-color: #f8f8f8;
+}
